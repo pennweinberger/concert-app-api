@@ -1,14 +1,119 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
 }
+
+enum ModerationStatus {
+  PENDING
+  ALLOWED
+  WARNED
+  BLOCKED
+}
+
+model User {
+  id        String   @id
+  handle    String   @unique
+  name      String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+
+  reviews   Review[]
+}
+
+model Artist {
+  id               String   @id @default(cuid())
+  name             String
+  ticketmasterId   String?  @unique
+  mbid             String?
+  mbidConfidence   Float?
+  lastMbidLookupAt DateTime?
+
+  shows            Show[]
+}
+
+model Venue {
+  id        String   @id @default(cuid())
+  name      String
+  city      String
+  country   String?
+  timezone  String?
+  createdAt DateTime @default(now())
+
+  shows     Show[]
+}
+
+model Show {
+  id               String   @id @default(cuid())
+  artistId         String
+  venueId          String
+  startDatetimeUtc DateTime
+  localDate        DateTime
+  timezone         String?
+
+  artist           Artist   @relation(fields: [artistId], references: [id])
+  venue            Venue    @relation(fields: [venueId], references: [id])
+  reviews          Review[]
+  externalRefs     ShowExternalRef[]
+  setlistCache     SetlistCache?
+
+  createdAt        DateTime @default(now())
+
+  @@unique([artistId, venueId, localDate])
+  @@index([localDate])
+}
+
+model ShowExternalRef {
+  id              String @id @default(cuid())
+  showId          String
+  provider        String
+  providerEventId String
+  rawPayload      Json?
+
+  show            Show @relation(fields: [showId], references: [id])
+
+  @@unique([provider, providerEventId])
+  @@index([showId])
+}
+
+model Review {
+  id               String @id @default(cuid())
+  userId           String
+  showId           String
+
+  ratingOverall    Int
+  reviewTextRaw    String
+
+  tags             Json?
+  highlights       Json?
+  categoryScores   Json?
+  sentiment        String?
+  summary          String?
+
+  moderationStatus ModerationStatus @default(PENDING)
+  moderationFlags  Json?
+
+  publishedAt      DateTime?
+  createdAt        DateTime @default(now())
+
+  user             User @relation(fields: [userId], references: [id])
+  show             Show @relation(fields: [showId], references: [id])
+
+  @@index([publishedAt])
+  @@index([showId])
+  @@index([userId])
+}
+
+model SetlistCache {
+  id        String   @id @default(cuid())
+  showId    String   @unique
+  status    String
+  setlist   Json?
+  fetchedAt DateTime?
+
+  show      Show @relation(fields: [showId], references: [id])
+}
+
+
