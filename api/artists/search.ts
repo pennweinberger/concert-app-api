@@ -21,15 +21,20 @@ export default {
 
       const items =
         data?._embedded?.events?.map((event: any) => ({
-          id: event.id,
-          name: event.name,
+          provider: "ticketmaster",
+          providerEventId: event.id,
+          artist: event.name,
+          venue: event._embedded?.venues?.[0]?.name || null,
+          city: event._embedded?.venues?.[0]?.city?.name || null,
+          localDate: event.dates?.start?.localDate || null,
+          ticketUrl: event.url || null,
         })) || [];
 
       return Response.json({ items });
     } catch (err: any) {
       return Response.json(
         {
-          error: "Failed to fetch artists",
+          error: "Failed to fetch shows",
           details: err?.message || String(err),
         },
         { status: 500 }
