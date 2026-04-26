@@ -1,44 +1,48 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+export default {
+  async fetch(req: Request) {
+    const { searchParams } = new URL(req.url);
+    const q = searchParams.get("q");
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const q = req.query.q as string | undefined;
+    if (!q) {
+      return Response.json(
+        { error: "Missing query param 'q'" },
+        { status: 400 }
+      );
+    }
 
-  if (!q) {
-    return res.status(400).json({ error: "Missing query param 'q'" });
-  }
+    const apiKey = process.env.TICKETMASTER_API_KEY;
 
-  const apiKey = process.env.TICKETMASTER_API_KEY;
+    if (!apiKey) {
+      return Response.json(
+        { error: "Missing TICKETMASTER_API_KEY" },
+        { status: 500 }
+      );
+    }
 
-  if (!apiKey) {
-    return res.status(500).json({ error: "Missing TICKETMASTER_API_KEY" });
-  }
+    try {
+      const res = await fetch(
+        `https://app.ticketmaster.com/discovery/v2/events.json?keyword=${encodeURIComponent(
+          q
+        )}&apikey=${apiKey}`
+      );
 
-  try {
-    const tmRes = await fetch(
-      `https://app.ticketmaster.com/discovery/v2/events.json?keyword=${encodeURIComponent(
-        q
-      )}&apikey=${apiKey}`
-    );
+      const data = await res.json();
 
-    const data = await tmRes.json();
+      const items =
+        data?._embedded?.events?.map((event: any) => ({
+          id: event.id,
+          name: event.name,
+        })) || [];
 
-    const events = data?._embedded?.events || [];
-
-    const items = events.map((event: any) => ({
-      provider: "ticketmaster",
-      providerEventId: event.id,
-      artist: event.name,
-      venue: event._embedded?.venues?.[0]?.name || null,
-      city: event._embedded?.venues?.[0]?.city?.name || null,
-      localDate: event.dates?.start?.localDate || null,
-      ticketUrl: event.url || null,
-    }));
-
-    return res.status(200).json({ items });
-  } catch (err: any) {
-    return res.status(500).json({
-      error: "Failed to fetch shows",
-      details: err?.message || String(err),
-    });
-  }
-}
+      return Response.json({ items });
+    } catch (err: any) {
+      return Response.json(
+        {
+          error: "Failed to fetch artists",
+          details: err?.message || String(err),
+        },
+        { status: 500 }
+      );
+    }
+  },
+};
