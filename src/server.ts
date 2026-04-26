@@ -96,29 +96,62 @@ app.post("/shows/confirm", async (request, reply) => {
   }
 
   try {
-    const artistRecord = await prisma.artist.create({
-      data: {
-        name: artist,
+    const parsedDate = new Date(`${localDate}T00:00:00.000Z`);
+
+    // Artist
+    let artistRecord = await prisma.artist.findFirst({
+      where: { name: artist },
+    });
+
+    if (!artistRecord) {
+      artistRecord = await prisma.artist.create({
+        data: { name: artist },
+      });
+    }
+
+    // Venue
+    let venueRecord = await prisma.venue.findFirst({
+      where: { name: venue, city },
+    });
+
+    if (!venueRecord) {
+      venueRecord = await prisma.venue.create({
+        data: { name: venue, city },
+      });
+    }
+
+    // Check existing show
+    const existingShow = await prisma.show.findUnique({
+      where: {
+        artistId_venueId_localDate: {
+          artistId: artistRecord.id,
+          venueId: venueRecord.id,
+          localDate: parsedDate,
+        },
       },
     });
 
-    const venueRecord = await prisma.venue.create({
-      data: {
-        name: venue,
-        city,
-      },
-    });
+    if (existingShow) {
+      return {
+        showId: existingShow.id,
+        existing: true,
+      };
+    }
 
+    // Create show
     const showRecord = await prisma.show.create({
       data: {
         artistId: artistRecord.id,
         venueId: venueRecord.id,
-        startDatetimeUtc: new Date(`${localDate}T00:00:00.000Z`),
-        localDate: new Date(`${localDate}T00:00:00.000Z`),
+        startDatetimeUtc: parsedDate,
+        localDate: parsedDate,
       },
     });
 
-    return { showId: showRecord.id };
+    return {
+      showId: showRecord.id,
+      existing: false,
+    };
   } catch (err: any) {
     app.log.error(err);
     return reply.status(500).send({
@@ -171,9 +204,7 @@ app.post("/reviews", async (request, reply) => {
 app.get("/feed", async (_request, reply) => {
   try {
     const reviews = await prisma.review.findMany({
-      orderBy: {
-        publishedAt: "desc",
-      },
+      orderBy: { publishedAt: "desc" },
       include: {
         show: {
           include: {
