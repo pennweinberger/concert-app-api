@@ -35,7 +35,7 @@ export default async function handler(
       },
     }));
 
-    return res.status(200).json({ items });
+    return res.status(200).json({ items, marker: "phase-a-v2" });
   } catch (err: any) {
     return res.status(500).json({
       error: "Failed to fetch feed",
