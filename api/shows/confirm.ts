@@ -1,20 +1,31 @@
-app.post("/shows/confirm", async (request, reply) => {
-  const body = request.body as {
-    artist: string;
-    venue: string;
-    city: string;
-    localDate: string;
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { prisma } from "../_lib/prisma.js";
+
+export default async function handler(
+  req: VercelRequest,
+  res: VercelResponse,
+) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const { artist, venue, city, localDate } = (req.body || {}) as {
+    artist?: string;
+    venue?: string;
+    city?: string;
+    localDate?: string;
   };
 
-  const { artist, venue, city, localDate } = body;
-
   if (!artist || !venue || !city || !localDate) {
-    return reply.status(400).send({
+    return res.status(400).json({
       error: "artist, venue, city, and localDate are required",
     });
   }
 
   try {
+    const parsedDate = new Date(`${localDate}T00:00:00.000Z`);
+
     // 1. Find or create artist
     let artistRecord = await prisma.artist.findFirst({
       where: { name: artist },
@@ -28,10 +39,7 @@ app.post("/shows/confirm", async (request, reply) => {
 
     // 2. Find or create venue
     let venueRecord = await prisma.venue.findFirst({
-      where: {
-        name: venue,
-        city,
-      },
+      where: { name: venue, city },
     });
 
     if (!venueRecord) {
@@ -40,41 +48,42 @@ app.post("/shows/confirm", async (request, reply) => {
       });
     }
 
-    // 3. Check if show already exists
-    const existingShow = await prisma.show.findFirst({
+    // 3. Idempotent show insert via composite unique key
+    //    @@unique([artistId, venueId, localDate]) on Show
+    const existingShow = await prisma.show.findUnique({
       where: {
-        artistId: artistRecord.id,
-        venueId: venueRecord.id,
-        localDate: new Date(`${localDate}T00:00:00.000Z`),
+        artistId_venueId_localDate: {
+          artistId: artistRecord.id,
+          venueId: venueRecord.id,
+          localDate: parsedDate,
+        },
       },
     });
 
     if (existingShow) {
-      return {
+      return res.status(200).json({
         showId: existingShow.id,
         existing: true,
-      };
+      });
     }
 
-    // 4. Create show
     const showRecord = await prisma.show.create({
       data: {
         artistId: artistRecord.id,
         venueId: venueRecord.id,
-        startDatetimeUtc: new Date(`${localDate}T00:00:00.000Z`),
-        localDate: new Date(`${localDate}T00:00:00.000Z`),
+        startDatetimeUtc: parsedDate,
+        localDate: parsedDate,
       },
     });
 
-    return {
+    return res.status(200).json({
       showId: showRecord.id,
       existing: false,
-    };
+    });
   } catch (err: any) {
-    app.log.error(err);
-    return reply.status(500).send({
+    return res.status(500).json({
       error: "Failed to confirm show",
       details: err?.message || String(err),
     });
   }
-});
+}
