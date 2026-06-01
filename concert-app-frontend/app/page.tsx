@@ -153,7 +153,13 @@ export default function Home() {
             }}
           >
             <div style={{ fontWeight: "bold" }}>
-              @{item.userHandle} reviewed{" "}
+              <Link
+                href={`/user/${item.userHandle}`}
+                style={{ color: "#7dafff", textDecoration: "none" }}
+              >
+                @{item.userHandle}
+              </Link>{" "}
+              reviewed{" "}
               <Link
                 href={`/artist/${item.show.artistId}`}
                 style={{ color: "#7dafff", textDecoration: "underline" }}

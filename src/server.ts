@@ -393,11 +393,16 @@ app.get("/artists/:id", async (request, reply) => {
       return reply.status(404).send({ error: "Artist not found" });
     }
 
-    const allReviews = artist.shows.flatMap((show) => show.reviews);
+    const allReviews = artist.shows.flatMap((show) =>
+      show.reviews.map((review) => ({
+        review,
+        show: { id: show.id, localDate: show.localDate },
+      })),
+    );
 
     const average =
       allReviews.length > 0
-        ? allReviews.reduce((sum, r) => sum + r.ratingOverall, 0) /
+        ? allReviews.reduce((sum, r) => sum + r.review.ratingOverall, 0) /
           allReviews.length
         : 0;
 
@@ -406,11 +411,12 @@ app.get("/artists/:id", async (request, reply) => {
       name: artist.name,
       averageRating: Number(average.toFixed(1)),
       reviewCount: allReviews.length,
-      reviews: allReviews.map((review) => ({
+      reviews: allReviews.map(({ review, show }) => ({
         id: review.id,
         userHandle: review.user.handle,
         ratingOverall: review.ratingOverall,
         reviewTextRaw: review.reviewTextRaw,
+        show: { id: show.id, localDate: show.localDate },
       })),
     };
   } catch (err: any) {
@@ -473,6 +479,62 @@ app.get("/shows/:id", async (request, reply) => {
     app.log.error(err);
     return reply.status(500).send({
       error: "Failed to fetch show",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+app.get("/users/:handle", async (request, reply) => {
+  const { handle } = request.params as { handle: string };
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { handle },
+      include: {
+        reviews: {
+          orderBy: { publishedAt: "desc" },
+          include: {
+            show: {
+              include: {
+                artist: true,
+                venue: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      return reply.status(404).send({ error: "User not found" });
+    }
+
+    return {
+      handle: user.handle,
+      reviewCount: user.reviews.length,
+      reviews: user.reviews.map((review) => ({
+        id: review.id,
+        ratingOverall: review.ratingOverall,
+        reviewTextRaw: review.reviewTextRaw,
+        publishedAt: review.publishedAt,
+        show: {
+          id: review.show.id,
+          localDate: review.show.localDate,
+          artist: {
+            id: review.show.artist.id,
+            name: review.show.artist.name,
+          },
+          venue: {
+            name: review.show.venue.name,
+            city: review.show.venue.city,
+          },
+        },
+      })),
+    };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to fetch user",
       details: err?.message || String(err),
     });
   }

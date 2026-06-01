@@ -12,6 +12,10 @@ type Review = {
   userHandle: string;
   ratingOverall: number;
   reviewTextRaw: string;
+  show: {
+    id: string;
+    localDate: string;
+  };
 };
 
 type Artist = {
@@ -134,8 +138,28 @@ export default function ArtistPage() {
                   {review.ratingOverall}/5
                 </div>
                 <div style={{ marginTop: "8px" }}>{review.reviewTextRaw}</div>
-                <div style={{ color: "#888", marginTop: "8px" }}>
-                  @{review.userHandle}
+                <div
+                  style={{
+                    color: "#888",
+                    marginTop: "8px",
+                    display: "flex",
+                    gap: "10px",
+                    fontSize: "13px",
+                  }}
+                >
+                  <Link
+                    href={`/user/${review.userHandle}`}
+                    style={{ color: "#7dafff", textDecoration: "none" }}
+                  >
+                    @{review.userHandle}
+                  </Link>
+                  <span style={{ color: "#444" }}>·</span>
+                  <Link
+                    href={`/show/${review.show.id}`}
+                    style={{ color: "#7dafff", textDecoration: "none" }}
+                  >
+                    View show
+                  </Link>
                 </div>
               </div>
             ))}

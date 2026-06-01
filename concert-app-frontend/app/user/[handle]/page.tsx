@@ -9,32 +9,33 @@ const API_BASE =
 
 type Review = {
   id: string;
-  userHandle: string;
   ratingOverall: number;
   reviewTextRaw: string;
   publishedAt: string | null;
+  show: {
+    id: string;
+    localDate: string;
+    artist: { id: string; name: string };
+    venue: { name: string; city: string };
+  };
 };
 
-type ShowDetail = {
-  id: string;
-  localDate: string;
-  artist: { id: string; name: string };
-  venue: { name: string; city: string };
-  averageRating: number;
+type UserDetail = {
+  handle: string;
   reviewCount: number;
   reviews: Review[];
 };
 
-export default function ShowPage() {
-  const params = useParams<{ id: string }>();
-  const id = params?.id;
+export default function UserPage() {
+  const params = useParams<{ handle: string }>();
+  const handle = params?.handle;
 
-  const [show, setShow] = useState<ShowDetail | null>(null);
+  const [user, setUser] = useState<UserDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!id) return;
+    if (!handle) return;
 
     let cancelled = false;
 
@@ -42,19 +43,19 @@ export default function ShowPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE}/shows/${id}`);
+        const res = await fetch(`${API_BASE}/users/${handle}`);
         if (!res.ok) {
           if (res.status === 404) {
-            if (!cancelled) setError("Show not found");
+            if (!cancelled) setError(`No user @${handle}`);
           } else {
-            if (!cancelled) setError(`Failed to load show (${res.status})`);
+            if (!cancelled) setError(`Failed to load user (${res.status})`);
           }
           return;
         }
-        const data: ShowDetail = await res.json();
-        if (!cancelled) setShow(data);
+        const data: UserDetail = await res.json();
+        if (!cancelled) setUser(data);
       } catch {
-        if (!cancelled) setError("Failed to load show");
+        if (!cancelled) setError("Failed to load user");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -65,7 +66,7 @@ export default function ShowPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [handle]);
 
   return (
     <main
@@ -99,36 +100,17 @@ export default function ShowPage() {
           </div>
         )}
 
-        {show && (
+        {user && (
           <>
-            <div style={{ color: "#aaa", fontSize: "13px" }}>
-              {new Date(show.localDate).toLocaleDateString(undefined, {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            </div>
-            <h1 style={{ fontSize: "32px", margin: "4px 0 8px" }}>
-              <Link
-                href={`/artist/${show.artist.id}`}
-                style={{
-                  color: "white",
-                  textDecoration: "none",
-                  borderBottom: "1px dotted #555",
-                }}
-              >
-                {show.artist.name}
-              </Link>
+            <h1 style={{ fontSize: "32px", marginBottom: "6px" }}>
+              @{user.handle}
             </h1>
-            <div style={{ color: "#bbb", marginBottom: "8px" }}>
-              {show.venue.name} • {show.venue.city}
-            </div>
             <div style={{ color: "#aaa", marginBottom: "28px" }}>
-              {show.averageRating} ★ • {show.reviewCount}{" "}
-              {show.reviewCount === 1 ? "Review" : "Reviews"}
+              {user.reviewCount}{" "}
+              {user.reviewCount === 1 ? "Review" : "Reviews"}
             </div>
 
-            {show.reviews.length === 0 && (
+            {user.reviews.length === 0 && (
               <div
                 style={{
                   background: "#1a1a1a",
@@ -137,11 +119,11 @@ export default function ShowPage() {
                   color: "#aaa",
                 }}
               >
-                No reviews of this show yet.
+                Hasn&rsquo;t reviewed any shows yet.
               </div>
             )}
 
-            {show.reviews.map((review) => (
+            {user.reviews.map((review) => (
               <div
                 key={review.id}
                 style={{
@@ -153,12 +135,29 @@ export default function ShowPage() {
               >
                 <div style={{ fontWeight: "bold" }}>
                   <Link
-                    href={`/user/${review.userHandle}`}
-                    style={{ color: "#7dafff", textDecoration: "none" }}
+                    href={`/artist/${review.show.artist.id}`}
+                    style={{
+                      color: "#7dafff",
+                      textDecoration: "underline",
+                    }}
                   >
-                    @{review.userHandle}
+                    {review.show.artist.name}
                   </Link>{" "}
                   • {review.ratingOverall}/5
+                </div>
+                <div
+                  style={{
+                    color: "#aaa",
+                    fontSize: "14px",
+                    marginTop: "4px",
+                  }}
+                >
+                  <Link
+                    href={`/show/${review.show.id}`}
+                    style={{ color: "#aaa", textDecoration: "none" }}
+                  >
+                    {review.show.venue.name} • {review.show.venue.city}
+                  </Link>
                 </div>
                 <div style={{ marginTop: "8px" }}>{review.reviewTextRaw}</div>
               </div>
