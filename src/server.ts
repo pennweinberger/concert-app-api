@@ -1,20 +1,140 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import fastifyJwt from "@fastify/jwt";
+import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 
 dotenv.config();
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error(
+    "FATAL: JWT_SECRET env var is not set. Refusing to start.",
+  );
+  process.exit(1);
+}
+
+declare module "@fastify/jwt" {
+  interface FastifyJWT {
+    payload: { userId: string; handle: string };
+    user: { userId: string; handle: string };
+  }
+}
 
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true });
 
 app.register(cors, {
   origin: true,
+  allowedHeaders: ["Content-Type", "Authorization"],
 });
+
+app.register(fastifyJwt, { secret: JWT_SECRET });
+
+// --- Validation helpers ----------------------------------------------------
+
+function normalizeHandle(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const handle = raw.trim().replace(/^@/, "");
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) return null;
+  return handle;
+}
+
+function validPassword(raw: unknown): raw is string {
+  return typeof raw === "string" && raw.length >= 8 && raw.length <= 200;
+}
 
 app.get("/health", async () => {
   return { ok: true };
 });
+
+// --- Auth ------------------------------------------------------------------
+
+app.post("/auth/register", async (request, reply) => {
+  const body = request.body as { handle?: unknown; password?: unknown };
+
+  const handle = normalizeHandle(body.handle);
+  if (!handle) {
+    return reply.status(400).send({
+      error: "Handle must be 3-20 chars, letters/numbers/underscore only",
+    });
+  }
+  if (!validPassword(body.password)) {
+    return reply.status(400).send({
+      error: "Password must be at least 8 characters",
+    });
+  }
+
+  const existing = await prisma.user.findUnique({ where: { handle } });
+  if (existing) {
+    return reply.status(409).send({ error: "Handle already taken" });
+  }
+
+  const passwordHash = await bcrypt.hash(body.password, 10);
+
+  try {
+    const user = await prisma.user.create({
+      data: { handle, passwordHash },
+    });
+
+    const token = await reply.jwtSign(
+      { userId: user.id, handle: user.handle },
+      { expiresIn: "30d" },
+    );
+
+    return reply.status(201).send({
+      token,
+      user: { id: user.id, handle: user.handle },
+    });
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to register",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+app.post("/auth/login", async (request, reply) => {
+  const body = request.body as { handle?: unknown; password?: unknown };
+
+  const handle = normalizeHandle(body.handle);
+  if (!handle || typeof body.password !== "string") {
+    return reply.status(400).send({ error: "Handle and password required" });
+  }
+
+  const user = await prisma.user.findUnique({ where: { handle } });
+  if (!user || !user.passwordHash) {
+    return reply.status(401).send({ error: "Invalid credentials" });
+  }
+
+  const ok = await bcrypt.compare(body.password, user.passwordHash);
+  if (!ok) {
+    return reply.status(401).send({ error: "Invalid credentials" });
+  }
+
+  const token = await reply.jwtSign(
+    { userId: user.id, handle: user.handle },
+    { expiresIn: "30d" },
+  );
+
+  return {
+    token,
+    user: { id: user.id, handle: user.handle },
+  };
+});
+
+app.get("/auth/me", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+  return { user: request.user };
+});
+
+// --- End auth --------------------------------------------------------------
 
 app.get("/artists/search", async (request, reply) => {
   const { q } = request.query as { q?: string };
@@ -162,6 +282,14 @@ app.post("/shows/confirm", async (request, reply) => {
 });
 
 app.post("/reviews", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const { userId } = request.user;
+
   const body = request.body as {
     showId: string;
     ratingOverall: number;
@@ -179,7 +307,7 @@ app.post("/reviews", async (request, reply) => {
   try {
     const review = await prisma.review.create({
       data: {
-        userId: "penn",
+        userId,
         showId,
         ratingOverall,
         reviewTextRaw,

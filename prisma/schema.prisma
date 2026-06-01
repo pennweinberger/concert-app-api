@@ -16,13 +16,14 @@ enum ModerationStatus {
 }
 
 model User {
-  id        String   @id
-  handle    String   @unique
-  name      String?
-  avatarUrl String?
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  handle       String   @unique
+  passwordHash String?
+  name         String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
 
-  reviews   Review[]
+  reviews      Review[]
 }
 
 model Artist {

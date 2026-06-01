@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { getToken, useAuthUser } from "../../lib/auth";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -19,6 +20,18 @@ type ShowSearchResult = {
 
 export default function NewReviewPage() {
   const router = useRouter();
+
+  // Auth gate: bounce to /signin if not signed in.
+  // useAuthUser returns null during SSR / first render and the real value
+  // after hydration; this effect fires once the value is known and
+  // redirects when needed.
+  const authUser = useAuthUser();
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!getToken()) {
+      router.replace(`/signin?next=${encodeURIComponent("/review/new")}`);
+    }
+  }, [authUser, router]);
 
   // Search step
   const [query, setQuery] = useState("");
@@ -108,16 +121,31 @@ export default function NewReviewPage() {
         return;
       }
 
-      // Step 2: post the review
+      // Step 2: post the review (authed)
+      const token = getToken();
+      if (!token) {
+        router.replace(`/signin?next=${encodeURIComponent("/review/new")}`);
+        return;
+      }
+
       const reviewRes = await fetch(`${API_BASE}/reviews`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           showId,
           ratingOverall: rating,
           reviewTextRaw: reviewText.trim(),
         }),
       });
+
+      if (reviewRes.status === 401) {
+        // Token expired or invalid — bounce to sign in
+        router.replace(`/signin?next=${encodeURIComponent("/review/new")}`);
+        return;
+      }
 
       if (!reviewRes.ok) {
         setError(`Could not post review (HTTP ${reviewRes.status}).`);
@@ -131,6 +159,21 @@ export default function NewReviewPage() {
       setError("Network error. Try again.");
       setSubmitting(false);
     }
+  }
+
+  // While the auth value hasn't resolved (SSR/first render) or the user
+  // isn't signed in, render a blank shell so signed-out visitors don't see
+  // the form flash before the bounce to /signin.
+  if (!authUser) {
+    return (
+      <main
+        style={{
+          background: "#0f0f0f",
+          minHeight: "100vh",
+          color: "white",
+        }}
+      />
+    );
   }
 
   return (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { clearSession, useAuthUser } from "./lib/auth";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -25,6 +26,7 @@ type FeedItem = {
 export default function Home() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const authUser = useAuthUser();
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +59,49 @@ export default function Home() {
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            gap: "12px",
+            fontSize: "14px",
+            marginBottom: "16px",
+            color: "#aaa",
+            minHeight: "20px",
+          }}
+        >
+          {authUser ? (
+            <>
+              <span>@{authUser.handle}</span>
+              <span style={{ color: "#444" }}>·</span>
+              <button
+                onClick={() => clearSession()}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  color: "#7dafff",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                }}
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href="/signin" style={{ color: "#7dafff" }}>
+                Sign in
+              </Link>
+              <span style={{ color: "#444" }}>·</span>
+              <Link href="/signup" style={{ color: "#7dafff" }}>
+                Sign up
+              </Link>
+            </>
+          )}
+        </div>
+
         <h1 style={{ fontSize: "34px", marginBottom: "8px" }}>Afterset</h1>
         <p style={{ color: "#aaa", marginBottom: "24px" }}>
           Review concerts. Discover the best live shows.
