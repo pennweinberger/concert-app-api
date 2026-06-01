@@ -179,7 +179,7 @@ app.post("/reviews", async (request, reply) => {
   try {
     const review = await prisma.review.create({
       data: {
-        userId: "demo-user",
+        userId: "penn",
         showId,
         ratingOverall,
         reviewTextRaw,
@@ -206,6 +206,7 @@ app.get("/feed", async (_request, reply) => {
     const reviews = await prisma.review.findMany({
       orderBy: { publishedAt: "desc" },
       include: {
+        user: true,
         show: {
           include: {
             artist: true,
@@ -217,12 +218,14 @@ app.get("/feed", async (_request, reply) => {
 
     const items = reviews.map((review) => ({
       reviewId: review.id,
+      userHandle: review.user.handle,
       ratingOverall: review.ratingOverall,
       reviewTextRaw: review.reviewTextRaw,
       publishedAt: review.publishedAt,
       show: {
         id: review.show.id,
         localDate: review.show.localDate,
+        artistId: review.show.artist.id,
         artist: review.show.artist.name,
         venue: review.show.venue.name,
         city: review.show.venue.city,
@@ -234,6 +237,58 @@ app.get("/feed", async (_request, reply) => {
     app.log.error(err);
     return reply.status(500).send({
       error: "Failed to fetch feed",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+app.get("/artists/:id", async (request, reply) => {
+  const { id } = request.params as { id: string };
+
+  try {
+    const artist = await prisma.artist.findUnique({
+      where: { id },
+      include: {
+        shows: {
+          include: {
+            reviews: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!artist) {
+      return reply.status(404).send({ error: "Artist not found" });
+    }
+
+    const allReviews = artist.shows.flatMap((show) => show.reviews);
+
+    const average =
+      allReviews.length > 0
+        ? allReviews.reduce((sum, r) => sum + r.ratingOverall, 0) /
+          allReviews.length
+        : 0;
+
+    return {
+      id: artist.id,
+      name: artist.name,
+      averageRating: Number(average.toFixed(1)),
+      reviewCount: allReviews.length,
+      reviews: allReviews.map((review) => ({
+        id: review.id,
+        userHandle: review.user.handle,
+        ratingOverall: review.ratingOverall,
+        reviewTextRaw: review.reviewTextRaw,
+      })),
+    };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to fetch artist",
       details: err?.message || String(err),
     });
   }
