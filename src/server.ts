@@ -509,9 +509,19 @@ app.get("/users/:handle", async (request, reply) => {
       return reply.status(404).send({ error: "User not found" });
     }
 
+    const distinctShows = new Set(user.reviews.map((r) => r.showId)).size;
+    const averageRating =
+      user.reviews.length > 0
+        ? user.reviews.reduce((sum, r) => sum + r.ratingOverall, 0) /
+          user.reviews.length
+        : 0;
+
     return {
       handle: user.handle,
+      joinedAt: user.createdAt,
+      showCount: distinctShows,
       reviewCount: user.reviews.length,
+      averageRating: Number(averageRating.toFixed(1)),
       reviews: user.reviews.map((review) => ({
         id: review.id,
         ratingOverall: review.ratingOverall,

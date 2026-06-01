@@ -22,7 +22,10 @@ type Review = {
 
 type UserDetail = {
   handle: string;
+  joinedAt: string;
+  showCount: number;
   reviewCount: number;
+  averageRating: number;
   reviews: Review[];
 };
 
@@ -105,9 +108,24 @@ export default function UserPage() {
             <h1 style={{ fontSize: "32px", marginBottom: "6px" }}>
               @{user.handle}
             </h1>
+            <div style={{ color: "#888", fontSize: "13px", marginBottom: "10px" }}>
+              Joined{" "}
+              {new Date(user.joinedAt).toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "long",
+              })}
+            </div>
             <div style={{ color: "#aaa", marginBottom: "28px" }}>
-              {user.reviewCount}{" "}
-              {user.reviewCount === 1 ? "Review" : "Reviews"}
+              {user.showCount === 0 ? (
+                "No shows reviewed yet"
+              ) : (
+                <>
+                  {user.showCount}{" "}
+                  {user.showCount === 1 ? "show" : "shows"} reviewed
+                  <span style={{ color: "#444", margin: "0 8px" }}>·</span>
+                  {user.averageRating} ★ avg
+                </>
+              )}
             </div>
 
             {user.reviews.length === 0 && (
