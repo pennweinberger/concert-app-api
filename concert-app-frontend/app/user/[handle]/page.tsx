@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { getToken, useAuthUser } from "../../lib/auth";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -33,26 +34,58 @@ export default function UserPage() {
   const params = useParams<{ handle: string }>();
   const handle = params?.handle;
 
+  const authUser = useAuthUser();
+  const isOwnProfile = !!authUser && authUser.handle === handle;
+
   const [user, setUser] = useState<UserDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Edit state — only one review can be edited at a time.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editRating, setEditRating] = useState(0);
+  const [editText, setEditText] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // Silent refetch used by event handlers (after PATCH / DELETE) — does
+  // not toggle the loading spinner so the page doesn't flash.
+  const refetchSilent = useCallback(async () => {
+    if (!handle) return;
+    try {
+      const res = await fetch(`${API_BASE}/users/${handle}`);
+      if (!res.ok) {
+        setError(
+          res.status === 404
+            ? `No user @${handle}`
+            : `Failed to load user (${res.status})`,
+        );
+        return;
+      }
+      const data: UserDetail = await res.json();
+      setUser(data);
+    } catch {
+      setError("Failed to load user");
+    }
+  }, [handle]);
+
+  // Initial load — separate inline async to keep setState calls out of
+  // the useEffect body (so the react-hooks/set-state-in-effect rule passes).
   useEffect(() => {
     if (!handle) return;
-
     let cancelled = false;
-
     async function load() {
       setLoading(true);
       setError(null);
       try {
         const res = await fetch(`${API_BASE}/users/${handle}`);
         if (!res.ok) {
-          if (res.status === 404) {
-            if (!cancelled) setError(`No user @${handle}`);
-          } else {
-            if (!cancelled) setError(`Failed to load user (${res.status})`);
-          }
+          if (!cancelled)
+            setError(
+              res.status === 404
+                ? `No user @${handle}`
+                : `Failed to load user (${res.status})`,
+            );
           return;
         }
         const data: UserDetail = await res.json();
@@ -63,13 +96,96 @@ export default function UserPage() {
         if (!cancelled) setLoading(false);
       }
     }
-
     load();
-
     return () => {
       cancelled = true;
     };
   }, [handle]);
+
+  function startEdit(review: Review) {
+    setEditingId(review.id);
+    setEditRating(review.ratingOverall);
+    setEditText(review.reviewTextRaw);
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditError(null);
+  }
+
+  async function saveEdit(reviewId: string) {
+    if (editRating < 1 || editRating > 5) {
+      setEditError("Pick a rating from 1 to 5 stars.");
+      return;
+    }
+    if (!editText.trim()) {
+      setEditError("Review text can't be empty.");
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      setEditError("Not signed in.");
+      return;
+    }
+
+    setEditSubmitting(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`${API_BASE}/reviews/${reviewId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ratingOverall: editRating,
+          reviewTextRaw: editText.trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setEditError(data?.error || `Edit failed (HTTP ${res.status}).`);
+        setEditSubmitting(false);
+        return;
+      }
+
+      setEditingId(null);
+      setEditSubmitting(false);
+      // Refetch so the rating and avg stay consistent with the server
+      refetchSilent();
+    } catch {
+      setEditError("Network error. Try again.");
+      setEditSubmitting(false);
+    }
+  }
+
+  async function deleteReview(reviewId: string) {
+    const ok = window.confirm("Delete this review? This can't be undone.");
+    if (!ok) return;
+
+    const token = getToken();
+    if (!token) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/reviews/${reviewId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => ({}));
+        alert(data?.error || `Delete failed (HTTP ${res.status}).`);
+        return;
+      }
+      // Clear edit state in case the deleted review was being edited
+      if (editingId === reviewId) setEditingId(null);
+      refetchSilent();
+    } catch {
+      alert("Network error. Try again.");
+    }
+  }
 
   return (
     <main
@@ -141,45 +257,172 @@ export default function UserPage() {
               </div>
             )}
 
-            {user.reviews.map((review) => (
-              <div
-                key={review.id}
-                style={{
-                  background: "#1a1a1a",
-                  padding: "18px",
-                  borderRadius: "16px",
-                  marginBottom: "14px",
-                }}
-              >
-                <div style={{ fontWeight: "bold" }}>
-                  <Link
-                    href={`/artist/${review.show.artist.id}`}
-                    style={{
-                      color: "#7dafff",
-                      textDecoration: "underline",
-                    }}
-                  >
-                    {review.show.artist.name}
-                  </Link>{" "}
-                  • {review.ratingOverall}/5
-                </div>
+            {user.reviews.map((review) => {
+              const isEditing = editingId === review.id;
+              return (
                 <div
+                  key={review.id}
                   style={{
-                    color: "#aaa",
-                    fontSize: "14px",
-                    marginTop: "4px",
+                    background: "#1a1a1a",
+                    padding: "18px",
+                    borderRadius: "16px",
+                    marginBottom: "14px",
                   }}
                 >
-                  <Link
-                    href={`/show/${review.show.id}`}
-                    style={{ color: "#aaa", textDecoration: "none" }}
+                  <div style={{ fontWeight: "bold" }}>
+                    <Link
+                      href={`/artist/${review.show.artist.id}`}
+                      style={{
+                        color: "#7dafff",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      {review.show.artist.name}
+                    </Link>
+                    {!isEditing && (
+                      <> • {review.ratingOverall}/5</>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      color: "#aaa",
+                      fontSize: "14px",
+                      marginTop: "4px",
+                    }}
                   >
-                    {review.show.venue.name} • {review.show.venue.city}
-                  </Link>
+                    <Link
+                      href={`/show/${review.show.id}`}
+                      style={{ color: "#aaa", textDecoration: "none" }}
+                    >
+                      {review.show.venue.name} • {review.show.venue.city}
+                    </Link>
+                  </div>
+
+                  {isEditing ? (
+                    <div style={{ marginTop: "12px" }}>
+                      <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <button
+                            key={n}
+                            onClick={() => setEditRating(n)}
+                            aria-label={`${n} star${n === 1 ? "" : "s"}`}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: 0,
+                              fontSize: "26px",
+                              color: n <= editRating ? "#fbbf24" : "#444",
+                              lineHeight: 1,
+                            }}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        rows={4}
+                        style={{
+                          width: "100%",
+                          padding: "10px",
+                          borderRadius: "10px",
+                          background: "#111",
+                          color: "white",
+                          border: "1px solid #333",
+                          resize: "vertical",
+                          fontFamily: "inherit",
+                          fontSize: "14px",
+                          boxSizing: "border-box",
+                          marginBottom: "10px",
+                        }}
+                      />
+                      {editError && (
+                        <div style={{ color: "#ff8080", fontSize: "13px", marginBottom: "10px" }}>
+                          {editError}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          onClick={() => saveEdit(review.id)}
+                          disabled={editSubmitting}
+                          style={{
+                            padding: "8px 14px",
+                            borderRadius: "10px",
+                            border: "none",
+                            background: editSubmitting ? "#555" : "#22c55e",
+                            color: editSubmitting ? "#aaa" : "white",
+                            cursor: editSubmitting ? "not-allowed" : "pointer",
+                            fontWeight: "bold",
+                            fontSize: "14px",
+                          }}
+                        >
+                          {editSubmitting ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          disabled={editSubmitting}
+                          style={{
+                            padding: "8px 14px",
+                            borderRadius: "10px",
+                            border: "1px solid #333",
+                            background: "transparent",
+                            color: "#aaa",
+                            cursor: editSubmitting ? "not-allowed" : "pointer",
+                            fontSize: "14px",
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ marginTop: "8px" }}>{review.reviewTextRaw}</div>
+                      {isOwnProfile && (
+                        <div
+                          style={{
+                            marginTop: "12px",
+                            display: "flex",
+                            gap: "12px",
+                            fontSize: "13px",
+                          }}
+                        >
+                          <button
+                            onClick={() => startEdit(review)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              color: "#7dafff",
+                              cursor: "pointer",
+                              fontSize: "13px",
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <span style={{ color: "#444" }}>·</span>
+                          <button
+                            onClick={() => deleteReview(review.id)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              color: "#ff8080",
+                              cursor: "pointer",
+                              fontSize: "13px",
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-                <div style={{ marginTop: "8px" }}>{review.reviewTextRaw}</div>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
       </div>

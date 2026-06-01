@@ -329,6 +329,109 @@ app.post("/reviews", async (request, reply) => {
   }
 });
 
+app.patch("/reviews/:id", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const { userId } = request.user;
+  const { id } = request.params as { id: string };
+  const body = request.body as {
+    ratingOverall?: unknown;
+    reviewTextRaw?: unknown;
+  };
+
+  const updates: { ratingOverall?: number; reviewTextRaw?: string } = {};
+
+  if (body.ratingOverall !== undefined) {
+    if (
+      typeof body.ratingOverall !== "number" ||
+      !Number.isInteger(body.ratingOverall) ||
+      body.ratingOverall < 1 ||
+      body.ratingOverall > 5
+    ) {
+      return reply
+        .status(400)
+        .send({ error: "ratingOverall must be an integer 1-5" });
+    }
+    updates.ratingOverall = body.ratingOverall;
+  }
+
+  if (body.reviewTextRaw !== undefined) {
+    if (
+      typeof body.reviewTextRaw !== "string" ||
+      body.reviewTextRaw.trim().length === 0
+    ) {
+      return reply
+        .status(400)
+        .send({ error: "reviewTextRaw must be non-empty" });
+    }
+    updates.reviewTextRaw = body.reviewTextRaw.trim();
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return reply.status(400).send({ error: "Nothing to update" });
+  }
+
+  const existing = await prisma.review.findUnique({ where: { id } });
+  if (!existing) {
+    return reply.status(404).send({ error: "Review not found" });
+  }
+  if (existing.userId !== userId) {
+    return reply.status(403).send({ error: "Not authorized" });
+  }
+
+  try {
+    const updated = await prisma.review.update({
+      where: { id },
+      data: updates,
+    });
+    return {
+      id: updated.id,
+      ratingOverall: updated.ratingOverall,
+      reviewTextRaw: updated.reviewTextRaw,
+    };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to update review",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+app.delete("/reviews/:id", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const { userId } = request.user;
+  const { id } = request.params as { id: string };
+
+  const existing = await prisma.review.findUnique({ where: { id } });
+  if (!existing) {
+    return reply.status(404).send({ error: "Review not found" });
+  }
+  if (existing.userId !== userId) {
+    return reply.status(403).send({ error: "Not authorized" });
+  }
+
+  try {
+    await prisma.review.delete({ where: { id } });
+    return reply.status(204).send();
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to delete review",
+      details: err?.message || String(err),
+    });
+  }
+});
+
 app.get("/feed", async (_request, reply) => {
   try {
     const reviews = await prisma.review.findMany({
