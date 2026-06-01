@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -12,7 +16,7 @@ export default function Home() {
   const [feed, setFeed] = useState<any[]>([]);
 
   async function loadFeed() {
-    const res = await fetch("http://localhost:3001/feed");
+    const res = await fetch(`${API_BASE}/feed`);
     const data = await res.json();
     setFeed(data.items || []);
   }
@@ -23,14 +27,14 @@ export default function Home() {
 
   async function searchShows() {
     const res = await fetch(
-      `http://localhost:3001/shows/search?q=${encodeURIComponent(query)}`
+      `${API_BASE}/shows/search?q=${encodeURIComponent(query)}`
     );
     const data = await res.json();
     setResults(data.items || []);
   }
 
   async function confirmShow(show: any) {
-    const res = await fetch("http://localhost:3001/shows/confirm", {
+    const res = await fetch(`${API_BASE}/shows/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(show),
@@ -42,7 +46,7 @@ export default function Home() {
   }
 
   async function submitReview() {
-    await fetch("http://localhost:3001/reviews", {
+    await fetch(`${API_BASE}/reviews`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -70,7 +74,7 @@ export default function Home() {
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
-        <h1 style={{ fontSize: "34px", marginBottom: "8px" }}>Encore</h1>
+        <h1 style={{ fontSize: "34px", marginBottom: "8px" }}>Afterset</h1>
         <p style={{ color: "#aaa", marginBottom: "30px" }}>
           Review concerts. Discover the best live shows.
         </p>
@@ -235,9 +239,16 @@ export default function Home() {
                 marginBottom: "12px",
               }}
             >
-              <div style={{ fontWeight: "bold" }}>
-                {item.show.artist} • {item.ratingOverall}/5
-              </div>
+             <div style={{ fontWeight: "bold" }}>
+  @{item.userHandle || "penn"} reviewed{" "}
+  <Link
+    href={`/artist/${item.show.artistId}`}
+    style={{ color: "#7dafff", textDecoration: "underline" }}
+  >
+    {item.show.artist}
+  </Link>{" "}
+  • {item.ratingOverall}/5
+</div>
               <div style={{ color: "#aaa", fontSize: "14px", marginTop: "4px" }}>
                 {item.show.venue}
               </div>
