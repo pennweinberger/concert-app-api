@@ -203,6 +203,12 @@ export default function Home() {
                 style={{ color: "#aaa", textDecoration: "none" }}
               >
                 {item.show.venue}
+                <span style={{ color: "#555", margin: "0 6px" }}>·</span>
+                {new Date(item.show.localDate).toLocaleDateString(undefined, {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })}
               </Link>
             </div>
             <div style={{ marginTop: "8px" }}>{item.reviewTextRaw}</div>
