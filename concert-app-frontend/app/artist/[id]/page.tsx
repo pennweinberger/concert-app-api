@@ -45,17 +45,18 @@ export default function ArtistPage() {
       try {
         const res = await fetch(`${API_BASE}/artists/${id}`);
         if (!res.ok) {
-          if (res.status === 404) {
-            if (!cancelled) setError("Artist not found");
-          } else {
-            if (!cancelled) setError(`Failed to load artist (${res.status})`);
-          }
+          if (!cancelled)
+            setError(
+              res.status === 404
+                ? "Artist not found."
+                : "Couldn't load this artist. Try refreshing.",
+            );
           return;
         }
         const data: Artist = await res.json();
         if (!cancelled) setArtist(data);
       } catch {
-        if (!cancelled) setError("Failed to load artist");
+        if (!cancelled) setError("Couldn't load this artist. Try refreshing.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -85,7 +86,11 @@ export default function ArtistPage() {
           </Link>
         </div>
 
-        {loading && <div style={{ color: "#aaa" }}>Loading…</div>}
+        {loading && (
+          <div style={{ color: "#888", fontSize: "14px", padding: "8px 0" }}>
+            Loading…
+          </div>
+        )}
 
         {error && (
           <div

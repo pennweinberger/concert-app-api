@@ -41,7 +41,7 @@ function SignInForm() {
           setError("Invalid handle or password.");
         } else {
           const data = await res.json().catch(() => ({}));
-          setError(data?.error || `Sign in failed (HTTP ${res.status}).`);
+          setError(data?.error || "Sign in failed. Try again in a moment.");
         }
         setSubmitting(false);
         return;

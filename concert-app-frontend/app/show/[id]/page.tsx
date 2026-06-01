@@ -44,17 +44,18 @@ export default function ShowPage() {
       try {
         const res = await fetch(`${API_BASE}/shows/${id}`);
         if (!res.ok) {
-          if (res.status === 404) {
-            if (!cancelled) setError("Show not found");
-          } else {
-            if (!cancelled) setError(`Failed to load show (${res.status})`);
-          }
+          if (!cancelled)
+            setError(
+              res.status === 404
+                ? "Show not found."
+                : "Couldn't load this show. Try refreshing.",
+            );
           return;
         }
         const data: ShowDetail = await res.json();
         if (!cancelled) setShow(data);
       } catch {
-        if (!cancelled) setError("Failed to load show");
+        if (!cancelled) setError("Couldn't load this show. Try refreshing.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -84,7 +85,11 @@ export default function ShowPage() {
           </Link>
         </div>
 
-        {loading && <div style={{ color: "#aaa" }}>Loading…</div>}
+        {loading && (
+          <div style={{ color: "#888", fontSize: "14px", padding: "8px 0" }}>
+            Loading…
+          </div>
+        )}
 
         {error && (
           <div

@@ -57,15 +57,15 @@ export default function UserPage() {
       if (!res.ok) {
         setError(
           res.status === 404
-            ? `No user @${handle}`
-            : `Failed to load user (${res.status})`,
+            ? `No user @${handle}.`
+            : "Couldn't load this profile. Try refreshing.",
         );
         return;
       }
       const data: UserDetail = await res.json();
       setUser(data);
     } catch {
-      setError("Failed to load user");
+      setError("Couldn't load this profile. Try refreshing.");
     }
   }, [handle]);
 
@@ -83,15 +83,16 @@ export default function UserPage() {
           if (!cancelled)
             setError(
               res.status === 404
-                ? `No user @${handle}`
-                : `Failed to load user (${res.status})`,
+                ? `No user @${handle}.`
+                : "Couldn't load this profile. Try refreshing.",
             );
           return;
         }
         const data: UserDetail = await res.json();
         if (!cancelled) setUser(data);
       } catch {
-        if (!cancelled) setError("Failed to load user");
+        if (!cancelled)
+          setError("Couldn't load this profile. Try refreshing.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -204,7 +205,11 @@ export default function UserPage() {
           </Link>
         </div>
 
-        {loading && <div style={{ color: "#aaa" }}>Loading…</div>}
+        {loading && (
+          <div style={{ color: "#888", fontSize: "14px", padding: "8px 0" }}>
+            Loading…
+          </div>
+        )}
 
         {error && (
           <div

@@ -26,6 +26,7 @@ type FeedItem = {
 export default function Home() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const authUser = useAuthUser();
 
   useEffect(() => {
@@ -34,8 +35,15 @@ export default function Home() {
     async function load() {
       try {
         const res = await fetch(`${API_BASE}/feed`);
+        if (!res.ok) {
+          if (!cancelled)
+            setError("Couldn't load the feed. Try refreshing.");
+          return;
+        }
         const data = await res.json();
         if (!cancelled) setFeed(data.items || []);
+      } catch {
+        if (!cancelled) setError("Couldn't load the feed. Try refreshing.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -127,9 +135,26 @@ export default function Home() {
 
         <h2 style={{ marginBottom: "14px" }}>Live Feed</h2>
 
-        {loading && <div style={{ color: "#aaa" }}>Loading…</div>}
+        {loading && (
+          <div style={{ color: "#888", fontSize: "14px", padding: "8px 0" }}>
+            Loading…
+          </div>
+        )}
 
-        {!loading && feed.length === 0 && (
+        {!loading && error && (
+          <div
+            style={{
+              background: "#1f1f1f",
+              padding: "16px",
+              borderRadius: "12px",
+              color: "#ff8080",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && feed.length === 0 && (
           <div
             style={{
               background: "#1a1a1a",
@@ -138,7 +163,9 @@ export default function Home() {
               color: "#aaa",
             }}
           >
-            No reviews yet. Be the first.
+            {authUser
+              ? "No reviews yet. Be the first to write one."
+              : "No reviews yet. Sign up to write the first one."}
           </div>
         )}
 

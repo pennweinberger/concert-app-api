@@ -44,9 +44,13 @@ function SignUpForm() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         if (res.status === 409) {
-          setError("That handle is already taken.");
+          setError(
+            "That handle is already taken. If it's yours, sign in instead.",
+          );
         } else {
-          setError(data?.error || `Sign up failed (HTTP ${res.status}).`);
+          setError(
+            data?.error || "Sign up failed. Try again in a moment.",
+          );
         }
         setSubmitting(false);
         return;
