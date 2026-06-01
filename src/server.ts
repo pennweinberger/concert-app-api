@@ -422,6 +422,62 @@ app.get("/artists/:id", async (request, reply) => {
   }
 });
 
+app.get("/shows/:id", async (request, reply) => {
+  const { id } = request.params as { id: string };
+
+  try {
+    const show = await prisma.show.findUnique({
+      where: { id },
+      include: {
+        artist: true,
+        venue: true,
+        reviews: {
+          orderBy: { publishedAt: "desc" },
+          include: { user: true },
+        },
+      },
+    });
+
+    if (!show) {
+      return reply.status(404).send({ error: "Show not found" });
+    }
+
+    const average =
+      show.reviews.length > 0
+        ? show.reviews.reduce((sum, r) => sum + r.ratingOverall, 0) /
+          show.reviews.length
+        : 0;
+
+    return {
+      id: show.id,
+      localDate: show.localDate,
+      artist: {
+        id: show.artist.id,
+        name: show.artist.name,
+      },
+      venue: {
+        name: show.venue.name,
+        city: show.venue.city,
+      },
+      averageRating: Number(average.toFixed(1)),
+      reviewCount: show.reviews.length,
+      reviews: show.reviews.map((review) => ({
+        id: review.id,
+        userHandle: review.user.handle,
+        ratingOverall: review.ratingOverall,
+        reviewTextRaw: review.reviewTextRaw,
+        publishedAt: review.publishedAt,
+      })),
+    };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to fetch show",
+      details: err?.message || String(err),
+    });
+  }
+});
+
 const start = async () => {
   try {
     await app.listen({ port: 3001, host: "0.0.0.0" });

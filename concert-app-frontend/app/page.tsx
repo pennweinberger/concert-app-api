@@ -165,7 +165,12 @@ export default function Home() {
             <div
               style={{ color: "#aaa", fontSize: "14px", marginTop: "4px" }}
             >
-              {item.show.venue}
+              <Link
+                href={`/show/${item.show.id}`}
+                style={{ color: "#aaa", textDecoration: "none" }}
+              >
+                {item.show.venue}
+              </Link>
             </div>
             <div style={{ marginTop: "8px" }}>{item.reviewTextRaw}</div>
           </div>
