@@ -46,9 +46,53 @@ export default function NewReviewPage() {
   const [rating, setRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
 
+  // Pre-filled show flow: when we land here via /review/new?showId=X
+  // (e.g. the CTA on a show page), we fetch the show, skip the search
+  // step, and submit straight to /reviews using the known showId.
+  const [preloadedShowId, setPreloadedShowId] = useState<string | null>(null);
+
   // Submit state
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Pre-fill from ?showId=X. Reading window.location.search directly so
+  // we don't need useSearchParams (which would require a Suspense
+  // boundary around the page). Runs once on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const showIdParam = sp.get("showId");
+    if (!showIdParam) return;
+
+    let cancelled = false;
+    async function loadShow() {
+      try {
+        const res = await fetch(`${API_BASE}/shows/${showIdParam}`);
+        if (cancelled || !res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setSelectedShow({
+          provider: "internal",
+          providerEventId: data.id,
+          artist: data.artist.name,
+          venue: data.venue.name,
+          city: data.venue.city,
+          // /shows/:id returns ISO datetime; /shows/confirm expects YYYY-MM-DD.
+          // Slicing here keeps the display + (fallback) confirm-call consistent
+          // with the rest of the search flow.
+          localDate: String(data.localDate).split("T")[0],
+          ticketUrl: "",
+        });
+        setPreloadedShowId(data.id);
+      } catch {
+        // Silent fallback to the search step. The user can search manually.
+      }
+    }
+    loadShow();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function runSearch() {
     if (!query.trim()) return;
@@ -78,6 +122,12 @@ export default function NewReviewPage() {
     setRating(0);
     setReviewText("");
     setError(null);
+    if (preloadedShowId) {
+      setPreloadedShowId(null);
+      // Drop the ?showId= param so a follow-up "Change show" search isn't
+      // re-prefilled on re-mount.
+      router.replace("/review/new");
+    }
   }
 
   async function submitReview() {
@@ -95,30 +145,39 @@ export default function NewReviewPage() {
     setError(null);
 
     try {
-      // Step 1: confirm the show (idempotent — creates or returns existing)
-      const confirmRes = await fetch(`${API_BASE}/shows/confirm`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          artist: selectedShow.artist,
-          venue: selectedShow.venue,
-          city: selectedShow.city,
-          localDate: selectedShow.localDate,
-        }),
-      });
+      // Step 1: get a showId. If we were pre-filled from a show page
+      // (preloadedShowId set), skip /shows/confirm entirely — we already
+      // know the row exists. Otherwise call confirm as before; it's
+      // idempotent.
+      let showId: string;
+      if (preloadedShowId) {
+        showId = preloadedShowId;
+      } else {
+        const confirmRes = await fetch(`${API_BASE}/shows/confirm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            artist: selectedShow.artist,
+            venue: selectedShow.venue,
+            city: selectedShow.city,
+            localDate: selectedShow.localDate,
+          }),
+        });
 
-      if (!confirmRes.ok) {
-        setError(`Could not confirm show (HTTP ${confirmRes.status}).`);
-        setSubmitting(false);
-        return;
-      }
+        if (!confirmRes.ok) {
+          setError(`Could not confirm show (HTTP ${confirmRes.status}).`);
+          setSubmitting(false);
+          return;
+        }
 
-      const confirmData = await confirmRes.json();
-      const showId: string | undefined = confirmData?.showId;
-      if (!showId) {
-        setError("Server did not return a showId.");
-        setSubmitting(false);
-        return;
+        const confirmData = await confirmRes.json();
+        const sid: string | undefined = confirmData?.showId;
+        if (!sid) {
+          setError("Server did not return a showId.");
+          setSubmitting(false);
+          return;
+        }
+        showId = sid;
       }
 
       // Step 2: post the review (authed)
@@ -295,7 +354,7 @@ export default function NewReviewPage() {
         {selectedShow && (
           <>
             <div style={{ color: "#aaa", marginBottom: "12px" }}>
-              Step 2: Write your review
+              {preloadedShowId ? "Write your review" : "Step 2: Write your review"}
             </div>
 
             <div
