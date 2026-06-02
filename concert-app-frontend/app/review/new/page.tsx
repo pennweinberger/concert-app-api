@@ -29,7 +29,10 @@ export default function NewReviewPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!getToken()) {
-      router.replace(`/signin?next=${encodeURIComponent("/review/new")}`);
+      // Preserve the full current URL (including ?showId=… if present) so
+      // a pre-filled review flow survives the signin round-trip.
+      const here = "/review/new" + window.location.search;
+      router.replace(`/signin?next=${encodeURIComponent(here)}`);
     }
   }, [authUser, router]);
 
@@ -80,7 +83,7 @@ export default function NewReviewPage() {
           // /shows/:id returns ISO datetime; /shows/confirm expects YYYY-MM-DD.
           // Slicing here keeps the display + (fallback) confirm-call consistent
           // with the rest of the search flow.
-          localDate: String(data.localDate).split("T")[0],
+          localDate: String(data.localDate).split("T")[0] ?? "",
           ticketUrl: "",
         });
         setPreloadedShowId(data.id);
@@ -183,7 +186,8 @@ export default function NewReviewPage() {
       // Step 2: post the review (authed)
       const token = getToken();
       if (!token) {
-        router.replace(`/signin?next=${encodeURIComponent("/review/new")}`);
+        const here = "/review/new" + window.location.search;
+        router.replace(`/signin?next=${encodeURIComponent(here)}`);
         return;
       }
 
@@ -202,7 +206,8 @@ export default function NewReviewPage() {
 
       if (reviewRes.status === 401) {
         // Token expired or invalid — bounce to sign in
-        router.replace(`/signin?next=${encodeURIComponent("/review/new")}`);
+        const here = "/review/new" + window.location.search;
+        router.replace(`/signin?next=${encodeURIComponent(here)}`);
         return;
       }
 

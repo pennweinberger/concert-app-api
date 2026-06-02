@@ -83,7 +83,7 @@ export default function ShowPage() {
     if (!show) return counts;
     for (const r of show.reviews) {
       const idx = 5 - r.ratingOverall;
-      if (idx >= 0 && idx < 5) counts[idx]++;
+      if (idx >= 0 && idx < 5) counts[idx] = (counts[idx] ?? 0) + 1;
     }
     return counts;
   }, [show]);
@@ -209,7 +209,7 @@ export default function ShowPage() {
                 }}
               >
                 {[5, 4, 3, 2, 1].map((stars) => {
-                  const count = distribution[5 - stars];
+                  const count = distribution[5 - stars] ?? 0;
                   const pct =
                     show.reviewCount > 0
                       ? (count / show.reviewCount) * 100

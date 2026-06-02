@@ -196,15 +196,27 @@ app.get("/shows/search", async (request, reply) => {
     const data = await res.json();
 
     const items =
-      data?._embedded?.events?.map((event: any) => ({
-        provider: "ticketmaster",
-        providerEventId: event.id,
-        artist: event.name,
-        venue: event._embedded?.venues?.[0]?.name,
-        city: event._embedded?.venues?.[0]?.city?.name,
-        localDate: event.dates?.start?.localDate,
-        ticketUrl: event.url,
-      })) || [];
+      data?._embedded?.events?.map((event: any) => {
+        // Ticketmaster's `event.name` is the EVENT/tour title
+        // (e.g. "Olivia Rodrigo: The Unraveled Tour"). The actual
+        // performing artist is on the first attraction. Use the
+        // attraction name as the canonical artist so reviews from
+        // different tours collapse onto one Artist row; fall back
+        // to event.name only when no attractions are present
+        // (uncommon — e.g. some festivals).
+        const attractionName: string | undefined =
+          event._embedded?.attractions?.[0]?.name;
+        return {
+          provider: "ticketmaster",
+          providerEventId: event.id,
+          artist: attractionName || event.name,
+          eventName: event.name,
+          venue: event._embedded?.venues?.[0]?.name,
+          city: event._embedded?.venues?.[0]?.city?.name,
+          localDate: event.dates?.start?.localDate,
+          ticketUrl: event.url,
+        };
+      }) || [];
 
     return { items };
   } catch (err) {
