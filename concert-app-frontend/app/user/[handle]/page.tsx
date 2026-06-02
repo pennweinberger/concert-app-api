@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { getToken, useAuthUser } from "../../lib/auth";
+import { authHeaders, getToken, useAuthUser } from "../../lib/auth";
+import LikeButton from "../../components/LikeButton";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -13,6 +14,8 @@ type Review = {
   ratingOverall: number;
   reviewTextRaw: string;
   publishedAt: string | null;
+  likeCount: number;
+  liked: boolean;
   show: {
     id: string;
     localDate: string;
@@ -53,7 +56,9 @@ export default function UserPage() {
   const refetchSilent = useCallback(async () => {
     if (!handle) return;
     try {
-      const res = await fetch(`${API_BASE}/users/${handle}`);
+      const res = await fetch(`${API_BASE}/users/${handle}`, {
+          headers: authHeaders(),
+        });
       if (!res.ok) {
         setError(
           res.status === 404
@@ -78,7 +83,9 @@ export default function UserPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE}/users/${handle}`);
+        const res = await fetch(`${API_BASE}/users/${handle}`, {
+          headers: authHeaders(),
+        });
         if (!res.ok) {
           if (!cancelled)
             setError(
@@ -385,44 +392,53 @@ export default function UserPage() {
                   ) : (
                     <>
                       <div style={{ marginTop: "8px" }}>{review.reviewTextRaw}</div>
-                      {isOwnProfile && (
-                        <div
-                          style={{
-                            marginTop: "12px",
-                            display: "flex",
-                            gap: "12px",
-                            fontSize: "13px",
-                          }}
-                        >
-                          <button
-                            onClick={() => startEdit(review)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              padding: 0,
-                              color: "#7dafff",
-                              cursor: "pointer",
-                              fontSize: "13px",
-                            }}
-                          >
-                            Edit
-                          </button>
-                          <span style={{ color: "#444" }}>·</span>
-                          <button
-                            onClick={() => deleteReview(review.id)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              padding: 0,
-                              color: "#ff8080",
-                              cursor: "pointer",
-                              fontSize: "13px",
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
+                      <div
+                        style={{
+                          marginTop: "12px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          fontSize: "13px",
+                        }}
+                      >
+                        <LikeButton
+                          reviewId={review.id}
+                          initialLiked={review.liked}
+                          initialLikeCount={review.likeCount}
+                        />
+                        {isOwnProfile && (
+                          <>
+                            <span style={{ color: "#444" }}>·</span>
+                            <button
+                              onClick={() => startEdit(review)}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                padding: 0,
+                                color: "#7dafff",
+                                cursor: "pointer",
+                                fontSize: "13px",
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <span style={{ color: "#444" }}>·</span>
+                            <button
+                              onClick={() => deleteReview(review.id)}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                padding: 0,
+                                color: "#ff8080",
+                                cursor: "pointer",
+                                fontSize: "13px",
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>

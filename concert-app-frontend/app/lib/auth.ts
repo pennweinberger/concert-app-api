@@ -21,6 +21,14 @@ export function getToken(): string | null {
   return window.localStorage.getItem(TOKEN_KEY);
 }
 
+// Helper for GET requests that should return personalized data (e.g. the
+// viewer's `liked` state per review) when signed in but stay public
+// otherwise. Pass the result to fetch as `headers`.
+export function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export function getUser(): AuthUser | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(USER_KEY);

@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import fastifyJwt from "@fastify/jwt";
 import bcrypt from "bcryptjs";
@@ -43,6 +43,20 @@ function normalizeHandle(raw: unknown): string | null {
 
 function validPassword(raw: unknown): raw is string {
   return typeof raw === "string" && raw.length >= 8 && raw.length <= 200;
+}
+
+// Reads the Authorization header and returns the userId if a valid JWT is
+// present; returns null otherwise. Use on GET endpoints that should remain
+// public but personalize their response (e.g. `liked` per review).
+async function getOptionalUserId(
+  request: FastifyRequest,
+): Promise<string | null> {
+  try {
+    await request.jwtVerify();
+    return request.user.userId;
+  } catch {
+    return null;
+  }
 }
 
 app.get("/health", async () => {
@@ -432,7 +446,68 @@ app.delete("/reviews/:id", async (request, reply) => {
   }
 });
 
-app.get("/feed", async (_request, reply) => {
+app.post("/reviews/:id/like", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const { userId } = request.user;
+  const { id: reviewId } = request.params as { id: string };
+
+  // Confirm the review exists (so we can't like a phantom).
+  const review = await prisma.review.findUnique({ where: { id: reviewId } });
+  if (!review) {
+    return reply.status(404).send({ error: "Review not found" });
+  }
+
+  try {
+    // Idempotent: composite unique on (userId, reviewId) means we can
+    // safely upsert. If already liked, this is a no-op.
+    await prisma.reviewLike.upsert({
+      where: { userId_reviewId: { userId, reviewId } },
+      create: { userId, reviewId },
+      update: {},
+    });
+
+    const likeCount = await prisma.reviewLike.count({ where: { reviewId } });
+    return { liked: true, likeCount };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to like review",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+app.delete("/reviews/:id/like", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const { userId } = request.user;
+  const { id: reviewId } = request.params as { id: string };
+
+  try {
+    // Idempotent: if no row exists, deleteMany returns count 0 — fine.
+    await prisma.reviewLike.deleteMany({ where: { userId, reviewId } });
+    const likeCount = await prisma.reviewLike.count({ where: { reviewId } });
+    return { liked: false, likeCount };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to unlike review",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+app.get("/feed", async (request, reply) => {
+  const viewerId = await getOptionalUserId(request);
   try {
     const reviews = await prisma.review.findMany({
       orderBy: { publishedAt: "desc" },
@@ -444,6 +519,7 @@ app.get("/feed", async (_request, reply) => {
             venue: true,
           },
         },
+        likes: { select: { userId: true } },
       },
     });
 
@@ -453,6 +529,10 @@ app.get("/feed", async (_request, reply) => {
       ratingOverall: review.ratingOverall,
       reviewTextRaw: review.reviewTextRaw,
       publishedAt: review.publishedAt,
+      likeCount: review.likes.length,
+      liked: viewerId
+        ? review.likes.some((l) => l.userId === viewerId)
+        : false,
       show: {
         id: review.show.id,
         localDate: review.show.localDate,
@@ -475,6 +555,7 @@ app.get("/feed", async (_request, reply) => {
 
 app.get("/artists/:id", async (request, reply) => {
   const { id } = request.params as { id: string };
+  const viewerId = await getOptionalUserId(request);
 
   try {
     const artist = await prisma.artist.findUnique({
@@ -485,6 +566,7 @@ app.get("/artists/:id", async (request, reply) => {
             reviews: {
               include: {
                 user: true,
+                likes: { select: { userId: true } },
               },
             },
           },
@@ -519,6 +601,10 @@ app.get("/artists/:id", async (request, reply) => {
         userHandle: review.user.handle,
         ratingOverall: review.ratingOverall,
         reviewTextRaw: review.reviewTextRaw,
+        likeCount: review.likes.length,
+        liked: viewerId
+          ? review.likes.some((l) => l.userId === viewerId)
+          : false,
         show: { id: show.id, localDate: show.localDate },
       })),
     };
@@ -533,6 +619,7 @@ app.get("/artists/:id", async (request, reply) => {
 
 app.get("/shows/:id", async (request, reply) => {
   const { id } = request.params as { id: string };
+  const viewerId = await getOptionalUserId(request);
 
   try {
     const show = await prisma.show.findUnique({
@@ -542,7 +629,10 @@ app.get("/shows/:id", async (request, reply) => {
         venue: true,
         reviews: {
           orderBy: { publishedAt: "desc" },
-          include: { user: true },
+          include: {
+            user: true,
+            likes: { select: { userId: true } },
+          },
         },
       },
     });
@@ -576,6 +666,10 @@ app.get("/shows/:id", async (request, reply) => {
         ratingOverall: review.ratingOverall,
         reviewTextRaw: review.reviewTextRaw,
         publishedAt: review.publishedAt,
+        likeCount: review.likes.length,
+        liked: viewerId
+          ? review.likes.some((l) => l.userId === viewerId)
+          : false,
       })),
     };
   } catch (err: any) {
@@ -589,6 +683,7 @@ app.get("/shows/:id", async (request, reply) => {
 
 app.get("/users/:handle", async (request, reply) => {
   const { handle } = request.params as { handle: string };
+  const viewerId = await getOptionalUserId(request);
 
   try {
     const user = await prisma.user.findUnique({
@@ -603,6 +698,7 @@ app.get("/users/:handle", async (request, reply) => {
                 venue: true,
               },
             },
+            likes: { select: { userId: true } },
           },
         },
       },
@@ -630,6 +726,10 @@ app.get("/users/:handle", async (request, reply) => {
         ratingOverall: review.ratingOverall,
         reviewTextRaw: review.reviewTextRaw,
         publishedAt: review.publishedAt,
+        likeCount: review.likes.length,
+        liked: viewerId
+          ? review.likes.some((l) => l.userId === viewerId)
+          : false,
         show: {
           id: review.show.id,
           localDate: review.show.localDate,

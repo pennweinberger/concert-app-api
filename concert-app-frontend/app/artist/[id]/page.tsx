@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { authHeaders } from "../../lib/auth";
+import LikeButton from "../../components/LikeButton";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -12,6 +14,8 @@ type Review = {
   userHandle: string;
   ratingOverall: number;
   reviewTextRaw: string;
+  likeCount: number;
+  liked: boolean;
   show: {
     id: string;
     localDate: string;
@@ -43,7 +47,9 @@ export default function ArtistPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE}/artists/${id}`);
+        const res = await fetch(`${API_BASE}/artists/${id}`, {
+          headers: authHeaders(),
+        });
         if (!res.ok) {
           if (!cancelled)
             setError(
@@ -150,6 +156,7 @@ export default function ArtistPage() {
                     display: "flex",
                     gap: "10px",
                     fontSize: "13px",
+                    alignItems: "center",
                   }}
                 >
                   <Link
@@ -165,6 +172,12 @@ export default function ArtistPage() {
                   >
                     View show
                   </Link>
+                  <span style={{ color: "#444" }}>·</span>
+                  <LikeButton
+                    reviewId={review.id}
+                    initialLiked={review.liked}
+                    initialLikeCount={review.likeCount}
+                  />
                 </div>
               </div>
             ))}

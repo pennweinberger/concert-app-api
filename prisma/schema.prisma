@@ -24,6 +24,7 @@ model User {
   createdAt    DateTime @default(now())
 
   reviews      Review[]
+  reviewLikes  ReviewLike[]
 }
 
 model Artist {
@@ -103,10 +104,24 @@ model Review {
 
   user             User @relation(fields: [userId], references: [id])
   show             Show @relation(fields: [showId], references: [id])
+  likes            ReviewLike[]
 
   @@index([publishedAt])
   @@index([showId])
   @@index([userId])
+}
+
+model ReviewLike {
+  id        String   @id @default(cuid())
+  userId    String
+  reviewId  String
+  createdAt DateTime @default(now())
+
+  user      User   @relation(fields: [userId], references: [id])
+  review    Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reviewId])
+  @@index([reviewId])
 }
 
 model SetlistCache {

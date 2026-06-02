@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { clearSession, useAuthUser } from "./lib/auth";
+import { authHeaders, clearSession, useAuthUser } from "./lib/auth";
+import LikeButton from "./components/LikeButton";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -13,6 +14,8 @@ type FeedItem = {
   ratingOverall: number;
   reviewTextRaw: string;
   publishedAt: string;
+  likeCount: number;
+  liked: boolean;
   show: {
     id: string;
     localDate: string;
@@ -34,7 +37,9 @@ export default function Home() {
 
     async function load() {
       try {
-        const res = await fetch(`${API_BASE}/feed`);
+        const res = await fetch(`${API_BASE}/feed`, {
+          headers: authHeaders(),
+        });
         if (!res.ok) {
           if (!cancelled)
             setError("Couldn't load the feed. Try refreshing.");
@@ -212,6 +217,13 @@ export default function Home() {
               </Link>
             </div>
             <div style={{ marginTop: "8px" }}>{item.reviewTextRaw}</div>
+            <div style={{ marginTop: "12px" }}>
+              <LikeButton
+                reviewId={item.reviewId}
+                initialLiked={item.liked}
+                initialLikeCount={item.likeCount}
+              />
+            </div>
           </div>
         ))}
       </div>

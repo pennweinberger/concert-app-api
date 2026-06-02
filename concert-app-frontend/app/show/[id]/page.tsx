@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { authHeaders } from "../../lib/auth";
+import LikeButton from "../../components/LikeButton";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -13,6 +15,8 @@ type Review = {
   ratingOverall: number;
   reviewTextRaw: string;
   publishedAt: string | null;
+  likeCount: number;
+  liked: boolean;
 };
 
 type ShowDetail = {
@@ -42,7 +46,9 @@ export default function ShowPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE}/shows/${id}`);
+        const res = await fetch(`${API_BASE}/shows/${id}`, {
+          headers: authHeaders(),
+        });
         if (!res.ok) {
           if (!cancelled)
             setError(
@@ -166,6 +172,13 @@ export default function ShowPage() {
                   • {review.ratingOverall}/5
                 </div>
                 <div style={{ marginTop: "8px" }}>{review.reviewTextRaw}</div>
+                <div style={{ marginTop: "12px" }}>
+                  <LikeButton
+                    reviewId={review.id}
+                    initialLiked={review.liked}
+                    initialLikeCount={review.likeCount}
+                  />
+                </div>
               </div>
             ))}
           </>
