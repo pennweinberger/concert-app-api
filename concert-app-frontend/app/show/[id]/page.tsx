@@ -166,9 +166,9 @@ export default function ShowPage() {
                 fontSize: "38px",
                 margin: "6px 0 10px",
                 lineHeight: 1.1,
-                fontFamily: "var(--font-display), serif",
-                fontWeight: 400,
-                letterSpacing: "-0.01em",
+                fontFamily: "var(--font-display), sans-serif",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
               }}
             >
               <Link

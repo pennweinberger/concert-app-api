@@ -260,9 +260,9 @@ export default function NewReviewPage() {
           style={{
             fontSize: "30px",
             marginBottom: "24px",
-            fontFamily: "var(--font-display), serif",
-            fontWeight: 400,
-            letterSpacing: "-0.01em",
+            fontFamily: "var(--font-display), sans-serif",
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
           }}
         >
           Write a review

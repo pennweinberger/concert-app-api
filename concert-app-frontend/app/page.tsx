@@ -161,9 +161,9 @@ export default function Home() {
           style={{
             fontSize: "34px",
             marginBottom: "8px",
-            fontFamily: "var(--font-display), serif",
-            fontWeight: 400,
-            letterSpacing: "-0.01em",
+            fontFamily: "var(--font-display), sans-serif",
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
           }}
         >
           Afterset

@@ -120,9 +120,9 @@ export default function SettingsPage() {
           style={{
             fontSize: "28px",
             marginBottom: "20px",
-            fontFamily: "var(--font-display), serif",
-            fontWeight: 400,
-            letterSpacing: "-0.01em",
+            fontFamily: "var(--font-display), sans-serif",
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
           }}
         >
           Edit profile

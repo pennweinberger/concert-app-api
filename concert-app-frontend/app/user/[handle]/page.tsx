@@ -262,9 +262,9 @@ export default function UserPage() {
                         fontSize: "28px",
                         margin: "0 0 2px",
                         lineHeight: 1.1,
-                        fontFamily: "var(--font-display), serif",
-                        fontWeight: 400,
-                        letterSpacing: "-0.01em",
+                        fontFamily: "var(--font-display), sans-serif",
+                        fontWeight: 700,
+                        letterSpacing: "-0.02em",
                       }}
                     >
                       {user.name}
@@ -279,9 +279,9 @@ export default function UserPage() {
                       fontSize: "28px",
                       margin: 0,
                       lineHeight: 1.1,
-                      fontFamily: "var(--font-display), serif",
-                      fontWeight: 400,
-                      letterSpacing: "-0.01em",
+                      fontFamily: "var(--font-display), sans-serif",
+                      fontWeight: 700,
+                      letterSpacing: "-0.02em",
                     }}
                   >
                     @{user.handle}

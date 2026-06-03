@@ -123,9 +123,9 @@ export default function ArtistPage() {
               style={{
                 fontSize: "38px",
                 marginBottom: "10px",
-                fontFamily: "var(--font-display), serif",
-                fontWeight: 400,
-                letterSpacing: "-0.01em",
+                fontFamily: "var(--font-display), sans-serif",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
               }}
             >
               {artist.name}

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Instrument_Serif } from "next/font/google";
+import { Inter, Jost } from "next/font/google";
 import "./globals.css";
 
 // Workhorse sans for body, UI, secondary headings, and stats.
@@ -9,12 +9,13 @@ const inter = Inter({
   weight: ["400", "500", "600", "700"],
 });
 
-// Editorial display serif for primary page-level moments only:
-// h1s on the home page, show/artist/profile/auth/review-flow pages.
-const instrumentSerif = Instrument_Serif({
+// Bold geometric display sans for primary page-level h1 moments
+// (Futura-family DNA: open-sourced as a Futura alternative).
+// Streetwear / event-poster voice, not editorial.
+const jost = Jost({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: "400",
+  weight: ["500", "600", "700"],
   style: ["normal", "italic"],
 });
 
@@ -31,7 +32,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${instrumentSerif.variable} h-full antialiased`}
+      className={`${inter.variable} ${jost.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
