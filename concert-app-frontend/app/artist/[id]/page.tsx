@@ -145,18 +145,26 @@ export default function ArtistPage() {
                   marginBottom: "14px",
                 }}
               >
-                <div style={{ fontWeight: "bold" }}>
-                  {review.ratingOverall}/5
+                <div style={{ fontWeight: "bold", fontSize: "16px" }}>
+                  <Link
+                    href={`/show/${review.show.id}`}
+                    style={{ color: "white", textDecoration: "none" }}
+                  >
+                    {new Date(review.show.localDate).toLocaleDateString(
+                      undefined,
+                      {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      },
+                    )}
+                  </Link>
                 </div>
-                <div style={{ marginTop: "8px" }}>{review.reviewTextRaw}</div>
                 <div
                   style={{
-                    color: "#888",
-                    marginTop: "8px",
-                    display: "flex",
-                    gap: "10px",
+                    color: "#aaa",
                     fontSize: "13px",
-                    alignItems: "center",
+                    marginTop: "4px",
                   }}
                 >
                   <Link
@@ -165,14 +173,11 @@ export default function ArtistPage() {
                   >
                     @{review.userHandle}
                   </Link>
-                  <span style={{ color: "#444" }}>·</span>
-                  <Link
-                    href={`/show/${review.show.id}`}
-                    style={{ color: "#7dafff", textDecoration: "none" }}
-                  >
-                    View show
-                  </Link>
-                  <span style={{ color: "#444" }}>·</span>
+                  {" · "}
+                  {review.ratingOverall}/5
+                </div>
+                <div style={{ marginTop: "10px" }}>{review.reviewTextRaw}</div>
+                <div style={{ marginTop: "12px" }}>
                   <LikeButton
                     reviewId={review.id}
                     initialLiked={review.liked}

@@ -184,28 +184,10 @@ export default function Home() {
               marginBottom: "12px",
             }}
           >
-            <div style={{ fontWeight: "bold" }}>
-              <Link
-                href={`/user/${item.userHandle}`}
-                style={{ color: "#7dafff", textDecoration: "none" }}
-              >
-                @{item.userHandle}
-              </Link>{" "}
-              reviewed{" "}
-              <Link
-                href={`/artist/${item.show.artistId}`}
-                style={{ color: "#7dafff", textDecoration: "underline" }}
-              >
-                {item.show.artist}
-              </Link>{" "}
-              • {item.ratingOverall}/5
-            </div>
-            <div
-              style={{ color: "#aaa", fontSize: "14px", marginTop: "4px" }}
-            >
+            <div style={{ fontWeight: "bold", fontSize: "16px" }}>
               <Link
                 href={`/show/${item.show.id}`}
-                style={{ color: "#aaa", textDecoration: "none" }}
+                style={{ color: "white", textDecoration: "none" }}
               >
                 {item.show.venue}
                 <span style={{ color: "#555", margin: "0 6px" }}>·</span>
@@ -216,7 +198,26 @@ export default function Home() {
                 })}
               </Link>
             </div>
-            <div style={{ marginTop: "8px" }}>{item.reviewTextRaw}</div>
+            <div
+              style={{ color: "#aaa", fontSize: "13px", marginTop: "4px" }}
+            >
+              <Link
+                href={`/user/${item.userHandle}`}
+                style={{ color: "#7dafff", textDecoration: "none" }}
+              >
+                @{item.userHandle}
+              </Link>
+              {" reviewed "}
+              <Link
+                href={`/artist/${item.show.artistId}`}
+                style={{ color: "#bbb", textDecoration: "underline" }}
+              >
+                {item.show.artist}
+              </Link>
+              {" · "}
+              {item.ratingOverall}/5
+            </div>
+            <div style={{ marginTop: "10px" }}>{item.reviewTextRaw}</div>
             <div style={{ marginTop: "12px" }}>
               <LikeButton
                 reviewId={item.reviewId}

@@ -281,33 +281,40 @@ export default function UserPage() {
                     marginBottom: "14px",
                   }}
                 >
-                  <div style={{ fontWeight: "bold" }}>
+                  <div style={{ fontWeight: "bold", fontSize: "16px" }}>
+                    <Link
+                      href={`/show/${review.show.id}`}
+                      style={{
+                        color: "white",
+                        textDecoration: "none",
+                      }}
+                    >
+                      {review.show.venue.name}
+                      <span style={{ color: "#555", margin: "0 6px" }}>
+                        ·
+                      </span>
+                      {review.show.venue.city}
+                    </Link>
+                  </div>
+                  <div
+                    style={{
+                      color: "#aaa",
+                      fontSize: "13px",
+                      marginTop: "4px",
+                    }}
+                  >
                     <Link
                       href={`/artist/${review.show.artist.id}`}
                       style={{
-                        color: "#7dafff",
+                        color: "#bbb",
                         textDecoration: "underline",
                       }}
                     >
                       {review.show.artist.name}
                     </Link>
                     {!isEditing && (
-                      <> • {review.ratingOverall}/5</>
+                      <> · {review.ratingOverall}/5</>
                     )}
-                  </div>
-                  <div
-                    style={{
-                      color: "#aaa",
-                      fontSize: "14px",
-                      marginTop: "4px",
-                    }}
-                  >
-                    <Link
-                      href={`/show/${review.show.id}`}
-                      style={{ color: "#aaa", textDecoration: "none" }}
-                    >
-                      {review.show.venue.name} • {review.show.venue.city}
-                    </Link>
                   </div>
 
                   {isEditing ? (
