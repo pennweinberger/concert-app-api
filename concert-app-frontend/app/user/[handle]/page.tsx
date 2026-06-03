@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { authHeaders, getToken, useAuthUser } from "../../lib/auth";
 import LikeButton from "../../components/LikeButton";
+import StarRating from "../../components/StarRating";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -279,43 +280,64 @@ export default function UserPage() {
                     padding: "18px",
                     borderRadius: "16px",
                     marginBottom: "14px",
+                    position: "relative",
                   }}
                 >
-                  <div style={{ fontWeight: "bold", fontSize: "16px" }}>
+                  {/* Overlay link to the show — suppressed while editing
+                      so a stray click can't navigate away from the form. */}
+                  {!isEditing && (
                     <Link
                       href={`/show/${review.show.id}`}
+                      aria-label={`View show: ${review.show.artist.name} at ${review.show.venue.name}`}
                       style={{
-                        color: "white",
-                        textDecoration: "none",
+                        position: "absolute",
+                        inset: 0,
+                        zIndex: 0,
+                        borderRadius: "16px",
+                      }}
+                    />
+                  )}
+                  <div
+                    style={{
+                      position: "relative",
+                      zIndex: 1,
+                      pointerEvents: isEditing ? "auto" : "none",
+                    }}
+                  >
+                    <div style={{ fontSize: "15px" }}>
+                      <Link
+                        href={`/user/${user.handle}`}
+                        style={{
+                          color: "#7dafff",
+                          textDecoration: "none",
+                          fontWeight: "bold",
+                          pointerEvents: "auto",
+                          position: "relative",
+                        }}
+                      >
+                        @{user.handle}
+                      </Link>
+                      <span style={{ color: "#aaa" }}> reviewed </span>
+                      <span style={{ color: "white", fontWeight: "bold" }}>
+                        {review.show.artist.name}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        color: "#aaa",
+                        fontSize: "14px",
+                        marginTop: "4px",
                       }}
                     >
                       {review.show.venue.name}
-                      <span style={{ color: "#555", margin: "0 6px" }}>
-                        ·
-                      </span>
+                      <span style={{ color: "#555", margin: "0 6px" }}>·</span>
                       {review.show.venue.city}
-                    </Link>
-                  </div>
-                  <div
-                    style={{
-                      color: "#aaa",
-                      fontSize: "13px",
-                      marginTop: "4px",
-                    }}
-                  >
-                    <Link
-                      href={`/artist/${review.show.artist.id}`}
-                      style={{
-                        color: "#bbb",
-                        textDecoration: "underline",
-                      }}
-                    >
-                      {review.show.artist.name}
-                    </Link>
+                    </div>
                     {!isEditing && (
-                      <> · {review.ratingOverall}/5</>
+                      <div style={{ marginTop: "8px" }}>
+                        <StarRating rating={review.ratingOverall} />
+                      </div>
                     )}
-                  </div>
 
                   {isEditing ? (
                     <div style={{ marginTop: "12px" }}>
@@ -398,7 +420,7 @@ export default function UserPage() {
                     </div>
                   ) : (
                     <>
-                      <div style={{ marginTop: "8px" }}>{review.reviewTextRaw}</div>
+                      <div style={{ marginTop: "10px" }}>{review.reviewTextRaw}</div>
                       <div
                         style={{
                           marginTop: "12px",
@@ -406,6 +428,8 @@ export default function UserPage() {
                           alignItems: "center",
                           gap: "12px",
                           fontSize: "13px",
+                          pointerEvents: "auto",
+                          position: "relative",
                         }}
                       >
                         <LikeButton
@@ -448,6 +472,7 @@ export default function UserPage() {
                       </div>
                     </>
                   )}
+                  </div>
                 </div>
               );
             })}

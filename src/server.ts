@@ -575,6 +575,7 @@ app.get("/artists/:id", async (request, reply) => {
       include: {
         shows: {
           include: {
+            venue: true,
             reviews: {
               include: {
                 user: true,
@@ -593,7 +594,11 @@ app.get("/artists/:id", async (request, reply) => {
     const allReviews = artist.shows.flatMap((show) =>
       show.reviews.map((review) => ({
         review,
-        show: { id: show.id, localDate: show.localDate },
+        show: {
+          id: show.id,
+          localDate: show.localDate,
+          venue: { name: show.venue.name, city: show.venue.city },
+        },
       })),
     );
 
@@ -617,7 +622,11 @@ app.get("/artists/:id", async (request, reply) => {
         liked: viewerId
           ? review.likes.some((l) => l.userId === viewerId)
           : false,
-        show: { id: show.id, localDate: show.localDate },
+        show: {
+          id: show.id,
+          localDate: show.localDate,
+          venue: show.venue,
+        },
       })),
     };
   } catch (err: any) {

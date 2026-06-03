@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { authHeaders } from "../../lib/auth";
 import LikeButton from "../../components/LikeButton";
+import StarRating from "../../components/StarRating";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -344,16 +345,22 @@ export default function ShowPage() {
                   marginBottom: "14px",
                 }}
               >
-                <div style={{ fontWeight: "bold" }}>
+                <div style={{ fontSize: "15px" }}>
                   <Link
                     href={`/user/${review.userHandle}`}
-                    style={{ color: "#7dafff", textDecoration: "none" }}
+                    style={{
+                      color: "#7dafff",
+                      textDecoration: "none",
+                      fontWeight: "bold",
+                    }}
                   >
                     @{review.userHandle}
-                  </Link>{" "}
-                  • {review.ratingOverall}/5
+                  </Link>
                 </div>
-                <div style={{ marginTop: "8px" }}>{review.reviewTextRaw}</div>
+                <div style={{ marginTop: "8px" }}>
+                  <StarRating rating={review.ratingOverall} />
+                </div>
+                <div style={{ marginTop: "10px" }}>{review.reviewTextRaw}</div>
                 <div style={{ marginTop: "12px" }}>
                   <LikeButton
                     reviewId={review.id}

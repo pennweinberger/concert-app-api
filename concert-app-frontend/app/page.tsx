@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { authHeaders, clearSession, useAuthUser } from "./lib/auth";
 import LikeButton from "./components/LikeButton";
+import StarRating from "./components/StarRating";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -182,12 +183,52 @@ export default function Home() {
               padding: "16px",
               borderRadius: "14px",
               marginBottom: "12px",
+              position: "relative",
             }}
           >
-            <div style={{ fontWeight: "bold", fontSize: "16px" }}>
-              <Link
-                href={`/show/${item.show.id}`}
-                style={{ color: "white", textDecoration: "none" }}
+            {/* Overlay link covers the whole card; inner @user link and
+                ♥ button re-enable pointer events to stay clickable. */}
+            <Link
+              href={`/show/${item.show.id}`}
+              aria-label={`View show: ${item.show.artist} at ${item.show.venue}`}
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 0,
+                borderRadius: "14px",
+              }}
+            />
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                pointerEvents: "none",
+              }}
+            >
+              <div style={{ fontSize: "15px" }}>
+                <Link
+                  href={`/user/${item.userHandle}`}
+                  style={{
+                    color: "#7dafff",
+                    textDecoration: "none",
+                    fontWeight: "bold",
+                    pointerEvents: "auto",
+                    position: "relative",
+                  }}
+                >
+                  @{item.userHandle}
+                </Link>
+                <span style={{ color: "#aaa" }}> reviewed </span>
+                <span style={{ color: "white", fontWeight: "bold" }}>
+                  {item.show.artist}
+                </span>
+              </div>
+              <div
+                style={{
+                  color: "#aaa",
+                  fontSize: "14px",
+                  marginTop: "4px",
+                }}
               >
                 {item.show.venue}
                 <span style={{ color: "#555", margin: "0 6px" }}>·</span>
@@ -196,34 +237,25 @@ export default function Home() {
                   month: "short",
                   day: "numeric",
                 })}
-              </Link>
-            </div>
-            <div
-              style={{ color: "#aaa", fontSize: "13px", marginTop: "4px" }}
-            >
-              <Link
-                href={`/user/${item.userHandle}`}
-                style={{ color: "#7dafff", textDecoration: "none" }}
+              </div>
+              <div style={{ marginTop: "8px" }}>
+                <StarRating rating={item.ratingOverall} />
+              </div>
+              <div style={{ marginTop: "10px" }}>{item.reviewTextRaw}</div>
+              <div
+                style={{
+                  marginTop: "12px",
+                  pointerEvents: "auto",
+                  position: "relative",
+                  display: "inline-block",
+                }}
               >
-                @{item.userHandle}
-              </Link>
-              {" reviewed "}
-              <Link
-                href={`/artist/${item.show.artistId}`}
-                style={{ color: "#bbb", textDecoration: "underline" }}
-              >
-                {item.show.artist}
-              </Link>
-              {" · "}
-              {item.ratingOverall}/5
-            </div>
-            <div style={{ marginTop: "10px" }}>{item.reviewTextRaw}</div>
-            <div style={{ marginTop: "12px" }}>
-              <LikeButton
-                reviewId={item.reviewId}
-                initialLiked={item.liked}
-                initialLikeCount={item.likeCount}
-              />
+                <LikeButton
+                  reviewId={item.reviewId}
+                  initialLiked={item.liked}
+                  initialLikeCount={item.likeCount}
+                />
+              </div>
             </div>
           </div>
         ))}
