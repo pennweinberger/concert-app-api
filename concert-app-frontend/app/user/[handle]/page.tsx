@@ -7,6 +7,7 @@ import { authHeaders, getToken, useAuthUser } from "../../lib/auth";
 import LikeButton from "../../components/LikeButton";
 import StarRating from "../../components/StarRating";
 import FollowButton from "../../components/FollowButton";
+import Avatar from "../../components/Avatar";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -28,6 +29,8 @@ type Review = {
 
 type UserDetail = {
   handle: string;
+  name: string | null;
+  avatarUrl: string | null;
   joinedAt: string;
   showCount: number;
   reviewCount: number;
@@ -238,9 +241,49 @@ export default function UserPage() {
 
         {user && (
           <>
-            <h1 style={{ fontSize: "32px", marginBottom: "6px" }}>
-              @{user.handle}
-            </h1>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "16px",
+                marginBottom: "10px",
+              }}
+            >
+              <Avatar
+                handle={user.handle}
+                name={user.name}
+                avatarUrl={user.avatarUrl}
+                size={72}
+              />
+              <div style={{ minWidth: 0 }}>
+                {user.name ? (
+                  <>
+                    <h1
+                      style={{
+                        fontSize: "28px",
+                        margin: "0 0 2px",
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      {user.name}
+                    </h1>
+                    <div style={{ color: "#888", fontSize: "14px" }}>
+                      @{user.handle}
+                    </div>
+                  </>
+                ) : (
+                  <h1
+                    style={{
+                      fontSize: "28px",
+                      margin: 0,
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    @{user.handle}
+                  </h1>
+                )}
+              </div>
+            </div>
             <div style={{ color: "#888", fontSize: "13px", marginBottom: "10px" }}>
               Joined{" "}
               {new Date(user.joinedAt).toLocaleDateString(undefined, {

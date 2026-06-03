@@ -6,6 +6,7 @@ import Link from "next/link";
 import { authHeaders } from "../../lib/auth";
 import LikeButton from "../../components/LikeButton";
 import StarRating from "../../components/StarRating";
+import Avatar from "../../components/Avatar";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -13,6 +14,8 @@ const API_BASE =
 type Review = {
   id: string;
   userHandle: string;
+  userName: string | null;
+  userAvatarUrl: string | null;
   ratingOverall: number;
   reviewTextRaw: string;
   likeCount: number;
@@ -165,63 +168,93 @@ export default function ArtistPage() {
                     position: "relative",
                     zIndex: 1,
                     pointerEvents: "none",
+                    display: "flex",
+                    gap: "12px",
                   }}
                 >
-                  <div style={{ fontSize: "15px" }}>
-                    <Link
-                      href={`/user/${review.userHandle}`}
-                      style={{
-                        color: "#7dafff",
-                        textDecoration: "none",
-                        fontWeight: "bold",
-                        pointerEvents: "auto",
-                        position: "relative",
-                      }}
-                    >
-                      @{review.userHandle}
-                    </Link>
-                  </div>
-                  <div
+                  <Link
+                    href={`/user/${review.userHandle}`}
+                    aria-label={`View @${review.userHandle}`}
                     style={{
-                      color: "#aaa",
-                      fontSize: "14px",
-                      marginTop: "4px",
-                    }}
-                  >
-                    {review.show.venue?.name && (
-                      <>
-                        {review.show.venue.name}
-                        <span style={{ color: "#555", margin: "0 6px" }}>
-                          ·
-                        </span>
-                      </>
-                    )}
-                    {new Date(review.show.localDate).toLocaleDateString(
-                      undefined,
-                      {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      },
-                    )}
-                  </div>
-                  <div style={{ marginTop: "8px" }}>
-                    <StarRating rating={review.ratingOverall} />
-                  </div>
-                  <div style={{ marginTop: "10px" }}>{review.reviewTextRaw}</div>
-                  <div
-                    style={{
-                      marginTop: "12px",
                       pointerEvents: "auto",
                       position: "relative",
-                      display: "inline-block",
+                      flexShrink: 0,
+                      textDecoration: "none",
                     }}
                   >
-                    <LikeButton
-                      reviewId={review.id}
-                      initialLiked={review.liked}
-                      initialLikeCount={review.likeCount}
+                    <Avatar
+                      handle={review.userHandle}
+                      name={review.userName}
+                      avatarUrl={review.userAvatarUrl}
+                      size={36}
                     />
+                  </Link>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "15px" }}>
+                      {review.userName && (
+                        <span
+                          style={{ color: "white", fontWeight: "bold" }}
+                        >
+                          {review.userName}{" "}
+                        </span>
+                      )}
+                      <Link
+                        href={`/user/${review.userHandle}`}
+                        style={{
+                          color: "#7dafff",
+                          textDecoration: "none",
+                          fontWeight: review.userName ? "normal" : "bold",
+                          pointerEvents: "auto",
+                          position: "relative",
+                        }}
+                      >
+                        @{review.userHandle}
+                      </Link>
+                    </div>
+                    <div
+                      style={{
+                        color: "#aaa",
+                        fontSize: "14px",
+                        marginTop: "4px",
+                      }}
+                    >
+                      {review.show.venue?.name && (
+                        <>
+                          {review.show.venue.name}
+                          <span style={{ color: "#555", margin: "0 6px" }}>
+                            ·
+                          </span>
+                        </>
+                      )}
+                      {new Date(review.show.localDate).toLocaleDateString(
+                        undefined,
+                        {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        },
+                      )}
+                    </div>
+                    <div style={{ marginTop: "8px" }}>
+                      <StarRating rating={review.ratingOverall} />
+                    </div>
+                    <div style={{ marginTop: "10px" }}>
+                      {review.reviewTextRaw}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: "12px",
+                        pointerEvents: "auto",
+                        position: "relative",
+                        display: "inline-block",
+                      }}
+                    >
+                      <LikeButton
+                        reviewId={review.id}
+                        initialLiked={review.liked}
+                        initialLikeCount={review.likeCount}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

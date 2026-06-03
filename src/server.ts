@@ -563,6 +563,8 @@ app.get("/feed", async (request, reply) => {
     const items = reviews.map((review) => ({
       reviewId: review.id,
       userHandle: review.user.handle,
+      userName: review.user.name,
+      userAvatarUrl: review.user.avatarUrl,
       ratingOverall: review.ratingOverall,
       reviewTextRaw: review.reviewTextRaw,
       publishedAt: review.publishedAt,
@@ -641,6 +643,8 @@ app.get("/artists/:id", async (request, reply) => {
       reviews: allReviews.map(({ review, show }) => ({
         id: review.id,
         userHandle: review.user.handle,
+        userName: review.user.name,
+        userAvatarUrl: review.user.avatarUrl,
         ratingOverall: review.ratingOverall,
         reviewTextRaw: review.reviewTextRaw,
         likeCount: review.likes.length,
@@ -709,6 +713,8 @@ app.get("/shows/:id", async (request, reply) => {
       reviews: show.reviews.map((review) => ({
         id: review.id,
         userHandle: review.user.handle,
+        userName: review.user.name,
+        userAvatarUrl: review.user.avatarUrl,
         ratingOverall: review.ratingOverall,
         reviewTextRaw: review.reviewTextRaw,
         publishedAt: review.publishedAt,
@@ -780,6 +786,8 @@ app.get("/users/:handle", async (request, reply) => {
 
     return {
       handle: user.handle,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
       joinedAt: user.createdAt,
       showCount: distinctShows,
       reviewCount: user.reviews.length,
@@ -814,6 +822,93 @@ app.get("/users/:handle", async (request, reply) => {
     app.log.error(err);
     return reply.status(500).send({
       error: "Failed to fetch user",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+app.patch("/users/me", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const { userId } = request.user;
+  const body = request.body as { name?: unknown; avatarUrl?: unknown };
+
+  const updates: { name?: string | null; avatarUrl?: string | null } = {};
+
+  if (body.name !== undefined) {
+    if (body.name === null || body.name === "") {
+      updates.name = null;
+    } else if (typeof body.name !== "string") {
+      return reply.status(400).send({ error: "name must be a string" });
+    } else {
+      const trimmed = body.name.trim();
+      if (trimmed.length === 0) {
+        updates.name = null;
+      } else if (trimmed.length > 50) {
+        return reply
+          .status(400)
+          .send({ error: "name must be at most 50 characters" });
+      } else {
+        updates.name = trimmed;
+      }
+    }
+  }
+
+  if (body.avatarUrl !== undefined) {
+    if (body.avatarUrl === null || body.avatarUrl === "") {
+      updates.avatarUrl = null;
+    } else if (typeof body.avatarUrl !== "string") {
+      return reply.status(400).send({ error: "avatarUrl must be a string" });
+    } else {
+      const trimmed = body.avatarUrl.trim();
+      if (trimmed.length === 0) {
+        updates.avatarUrl = null;
+      } else if (trimmed.length > 500) {
+        return reply
+          .status(400)
+          .send({ error: "avatarUrl must be at most 500 characters" });
+      } else {
+        // Sanity check: must parse as a URL with http(s) scheme.
+        let parsed: URL;
+        try {
+          parsed = new URL(trimmed);
+        } catch {
+          return reply
+            .status(400)
+            .send({ error: "avatarUrl must be a valid URL" });
+        }
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          return reply
+            .status(400)
+            .send({ error: "avatarUrl must be an http(s) URL" });
+        }
+        updates.avatarUrl = trimmed;
+      }
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return reply.status(400).send({ error: "Nothing to update" });
+  }
+
+  try {
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: updates,
+    });
+    return {
+      handle: updated.handle,
+      name: updated.name,
+      avatarUrl: updated.avatarUrl,
+    };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to update profile",
       details: err?.message || String(err),
     });
   }

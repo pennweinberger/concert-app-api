@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { authHeaders, clearSession, useAuthUser } from "./lib/auth";
 import LikeButton from "./components/LikeButton";
 import StarRating from "./components/StarRating";
+import Avatar from "./components/Avatar";
 
 type FeedScope = "all" | "following";
 
@@ -15,6 +16,8 @@ const API_BASE =
 type FeedItem = {
   reviewId: string;
   userHandle: string;
+  userName: string | null;
+  userAvatarUrl: string | null;
   ratingOverall: number;
   reviewTextRaw: string;
   publishedAt: string;
@@ -123,6 +126,10 @@ export default function Home() {
           {authUser ? (
             <>
               <span>@{authUser.handle}</span>
+              <span style={{ color: "#444" }}>·</span>
+              <Link href="/settings" style={{ color: "#7dafff" }}>
+                Settings
+              </Link>
               <span style={{ color: "#444" }}>·</span>
               <button
                 onClick={() => clearSession()}
@@ -296,58 +303,91 @@ export default function Home() {
                 position: "relative",
                 zIndex: 1,
                 pointerEvents: "none",
+                display: "flex",
+                gap: "12px",
               }}
             >
-              <div style={{ fontSize: "15px" }}>
-                <Link
-                  href={`/user/${item.userHandle}`}
-                  style={{
-                    color: "#7dafff",
-                    textDecoration: "none",
-                    fontWeight: "bold",
-                    pointerEvents: "auto",
-                    position: "relative",
-                  }}
-                >
-                  @{item.userHandle}
-                </Link>
-                <span style={{ color: "#aaa" }}> reviewed </span>
-                <span style={{ color: "white", fontWeight: "bold" }}>
-                  {item.show.artist}
-                </span>
-              </div>
-              <div
+              <Link
+                href={`/user/${item.userHandle}`}
+                aria-label={`View @${item.userHandle}`}
                 style={{
-                  color: "#aaa",
-                  fontSize: "14px",
-                  marginTop: "4px",
-                }}
-              >
-                {item.show.venue}
-                <span style={{ color: "#555", margin: "0 6px" }}>·</span>
-                {new Date(item.show.localDate).toLocaleDateString(undefined, {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </div>
-              <div style={{ marginTop: "8px" }}>
-                <StarRating rating={item.ratingOverall} />
-              </div>
-              <div style={{ marginTop: "10px" }}>{item.reviewTextRaw}</div>
-              <div
-                style={{
-                  marginTop: "12px",
                   pointerEvents: "auto",
                   position: "relative",
-                  display: "inline-block",
+                  flexShrink: 0,
+                  textDecoration: "none",
                 }}
               >
-                <LikeButton
-                  reviewId={item.reviewId}
-                  initialLiked={item.liked}
-                  initialLikeCount={item.likeCount}
+                <Avatar
+                  handle={item.userHandle}
+                  name={item.userName}
+                  avatarUrl={item.userAvatarUrl}
+                  size={36}
                 />
+              </Link>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "15px" }}>
+                  {item.userName && (
+                    <span
+                      style={{ color: "white", fontWeight: "bold" }}
+                    >
+                      {item.userName}{" "}
+                    </span>
+                  )}
+                  <Link
+                    href={`/user/${item.userHandle}`}
+                    style={{
+                      color: "#7dafff",
+                      textDecoration: "none",
+                      fontWeight: item.userName ? "normal" : "bold",
+                      pointerEvents: "auto",
+                      position: "relative",
+                    }}
+                  >
+                    @{item.userHandle}
+                  </Link>
+                  <span style={{ color: "#aaa" }}> reviewed </span>
+                  <span style={{ color: "white", fontWeight: "bold" }}>
+                    {item.show.artist}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    color: "#aaa",
+                    fontSize: "14px",
+                    marginTop: "4px",
+                  }}
+                >
+                  {item.show.venue}
+                  <span style={{ color: "#555", margin: "0 6px" }}>·</span>
+                  {new Date(item.show.localDate).toLocaleDateString(
+                    undefined,
+                    {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    },
+                  )}
+                </div>
+                <div style={{ marginTop: "8px" }}>
+                  <StarRating rating={item.ratingOverall} />
+                </div>
+                <div style={{ marginTop: "10px" }}>
+                  {item.reviewTextRaw}
+                </div>
+                <div
+                  style={{
+                    marginTop: "12px",
+                    pointerEvents: "auto",
+                    position: "relative",
+                    display: "inline-block",
+                  }}
+                >
+                  <LikeButton
+                    reviewId={item.reviewId}
+                    initialLiked={item.liked}
+                    initialLikeCount={item.likeCount}
+                  />
+                </div>
               </div>
             </div>
           </div>
