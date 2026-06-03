@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { authHeaders, clearSession, useAuthUser } from "./lib/auth";
 import LikeButton from "./components/LikeButton";
 import StarRating from "./components/StarRating";
+
+type FeedScope = "all" | "following";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -28,19 +31,51 @@ type FeedItem = {
 };
 
 export default function Home() {
+  const router = useRouter();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scope, setScope] = useState<FeedScope>("all");
   const authUser = useAuthUser();
+
+  // Read ?scope= from URL on mount so the toggle is bookmarkable
+  // and survives refresh. Falls back to "all" if no/unknown scope.
+  // Deferred to a microtask so setState isn't synchronous within the
+  // effect body (matches the async-load pattern used elsewhere and
+  // keeps react-hooks/set-state-in-effect happy).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("scope") === "following") setScope("following");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function selectScope(next: FeedScope) {
+    if (next === scope) return;
+    setScope(next);
+    // Reflect in URL for shareable links / refresh persistence.
+    const path = next === "following" ? "/?scope=following" : "/";
+    router.replace(path);
+  }
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      setLoading(true);
+      setError(null);
       try {
-        const res = await fetch(`${API_BASE}/feed`, {
-          headers: authHeaders(),
-        });
+        const url =
+          scope === "following"
+            ? `${API_BASE}/feed?scope=following`
+            : `${API_BASE}/feed`;
+        const res = await fetch(url, { headers: authHeaders() });
         if (!res.ok) {
           if (!cancelled)
             setError("Couldn't load the feed. Try refreshing.");
@@ -60,7 +95,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [scope]);
 
   return (
     <main
@@ -139,7 +174,49 @@ export default function Home() {
           + Write a Review
         </Link>
 
-        <h2 style={{ marginBottom: "14px" }}>Live Feed</h2>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "14px",
+          }}
+        >
+          <h2 style={{ margin: 0 }}>Live Feed</h2>
+          <div
+            style={{
+              display: "flex",
+              gap: "4px",
+              background: "#111",
+              padding: "3px",
+              borderRadius: "10px",
+            }}
+            role="tablist"
+            aria-label="Feed scope"
+          >
+            {(["all", "following"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => selectScope(mode)}
+                role="tab"
+                aria-selected={scope === mode}
+                style={{
+                  background: scope === mode ? "#1f1f1f" : "transparent",
+                  color: scope === mode ? "white" : "#888",
+                  border: "none",
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: scope === mode ? "bold" : "normal",
+                  fontFamily: "inherit",
+                }}
+              >
+                {mode === "all" ? "All" : "Following"}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {loading && (
           <div style={{ color: "#888", fontSize: "14px", padding: "8px 0" }}>
@@ -169,9 +246,25 @@ export default function Home() {
               color: "#aaa",
             }}
           >
-            {authUser
-              ? "No reviews yet. Be the first to write one."
-              : "No reviews yet. Sign up to write the first one."}
+            {scope === "following" ? (
+              authUser ? (
+                <>
+                  You&rsquo;re not following anyone yet. Open a user&rsquo;s
+                  profile to follow them.
+                </>
+              ) : (
+                <>
+                  <Link href="/signin?next=/?scope=following" style={{ color: "#7dafff" }}>
+                    Sign in
+                  </Link>{" "}
+                  to see reviews from people you follow.
+                </>
+              )
+            ) : authUser ? (
+              "No reviews yet. Be the first to write one."
+            ) : (
+              "No reviews yet. Sign up to write the first one."
+            )}
           </div>
         )}
 

@@ -25,6 +25,25 @@ model User {
 
   reviews      Review[]
   reviewLikes  ReviewLike[]
+
+  // Self-referencing follow graph. `following` = Follow rows where
+  // this user is the follower (i.e. users they follow). `followers`
+  // = Follow rows where this user is being followed.
+  following    Follow[]     @relation("UserFollowing")
+  followers    Follow[]     @relation("UserFollowers")
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower    User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
 }
 
 model Artist {

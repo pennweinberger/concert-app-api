@@ -520,8 +520,33 @@ app.delete("/reviews/:id/like", async (request, reply) => {
 
 app.get("/feed", async (request, reply) => {
   const viewerId = await getOptionalUserId(request);
+  const { scope } = request.query as { scope?: string };
+  const followingScope = scope === "following";
+
+  // /feed?scope=following without a signed-in viewer = empty by design;
+  // the frontend renders a sign-in prompt instead of an error.
+  if (followingScope && !viewerId) {
+    return { items: [] };
+  }
+
   try {
+    // For the following scope, pre-resolve the set of userIds the viewer
+    // follows and filter the review query by it. Plain set lookup, no
+    // join — keeps the existing review query shape.
+    let followingIds: string[] | null = null;
+    if (followingScope && viewerId) {
+      const follows = await prisma.follow.findMany({
+        where: { followerId: viewerId },
+        select: { followingId: true },
+      });
+      followingIds = follows.map((f) => f.followingId);
+      if (followingIds.length === 0) {
+        return { items: [] };
+      }
+    }
+
     const reviews = await prisma.review.findMany({
+      ...(followingIds ? { where: { userId: { in: followingIds } } } : {}),
       orderBy: { publishedAt: "desc" },
       include: {
         user: true,
@@ -736,12 +761,32 @@ app.get("/users/:handle", async (request, reply) => {
           user.reviews.length
         : 0;
 
+    // Follow counts + (for an authed viewer who isn't the profile owner)
+    // whether the viewer follows this user.
+    const [followerCount, followingCount, viewerFollow] = await Promise.all([
+      prisma.follow.count({ where: { followingId: user.id } }),
+      prisma.follow.count({ where: { followerId: user.id } }),
+      viewerId && viewerId !== user.id
+        ? prisma.follow.findUnique({
+            where: {
+              followerId_followingId: {
+                followerId: viewerId,
+                followingId: user.id,
+              },
+            },
+          })
+        : Promise.resolve(null),
+    ]);
+
     return {
       handle: user.handle,
       joinedAt: user.createdAt,
       showCount: distinctShows,
       reviewCount: user.reviews.length,
       averageRating: Number(averageRating.toFixed(1)),
+      followerCount,
+      followingCount,
+      followedByMe: !!viewerFollow,
       reviews: user.reviews.map((review) => ({
         id: review.id,
         ratingOverall: review.ratingOverall,
@@ -769,6 +814,77 @@ app.get("/users/:handle", async (request, reply) => {
     app.log.error(err);
     return reply.status(500).send({
       error: "Failed to fetch user",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+app.post("/users/:handle/follow", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const { userId: followerId } = request.user;
+  const { handle } = request.params as { handle: string };
+
+  const target = await prisma.user.findUnique({ where: { handle } });
+  if (!target) {
+    return reply.status(404).send({ error: "User not found" });
+  }
+  if (target.id === followerId) {
+    return reply.status(400).send({ error: "You can't follow yourself" });
+  }
+
+  try {
+    await prisma.follow.upsert({
+      where: {
+        followerId_followingId: { followerId, followingId: target.id },
+      },
+      create: { followerId, followingId: target.id },
+      update: {},
+    });
+    const followerCount = await prisma.follow.count({
+      where: { followingId: target.id },
+    });
+    return { following: true, followerCount };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to follow",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+app.delete("/users/:handle/follow", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const { userId: followerId } = request.user;
+  const { handle } = request.params as { handle: string };
+
+  const target = await prisma.user.findUnique({ where: { handle } });
+  if (!target) {
+    return reply.status(404).send({ error: "User not found" });
+  }
+
+  try {
+    await prisma.follow.deleteMany({
+      where: { followerId, followingId: target.id },
+    });
+    const followerCount = await prisma.follow.count({
+      where: { followingId: target.id },
+    });
+    return { following: false, followerCount };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to unfollow",
       details: err?.message || String(err),
     });
   }

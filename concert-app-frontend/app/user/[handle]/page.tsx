@@ -6,6 +6,7 @@ import Link from "next/link";
 import { authHeaders, getToken, useAuthUser } from "../../lib/auth";
 import LikeButton from "../../components/LikeButton";
 import StarRating from "../../components/StarRating";
+import FollowButton from "../../components/FollowButton";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -31,6 +32,9 @@ type UserDetail = {
   showCount: number;
   reviewCount: number;
   averageRating: number;
+  followerCount: number;
+  followingCount: number;
+  followedByMe: boolean;
   reviews: Review[];
 };
 
@@ -244,7 +248,7 @@ export default function UserPage() {
                 month: "long",
               })}
             </div>
-            <div style={{ color: "#aaa", marginBottom: "28px" }}>
+            <div style={{ color: "#aaa", marginBottom: "10px" }}>
               {user.showCount === 0 ? (
                 "No shows reviewed yet"
               ) : (
@@ -256,6 +260,39 @@ export default function UserPage() {
                 </>
               )}
             </div>
+            <div
+              style={{
+                color: "#aaa",
+                fontSize: "14px",
+                marginBottom: isOwnProfile ? "28px" : "16px",
+              }}
+            >
+              <strong style={{ color: "white" }}>{user.followerCount}</strong>{" "}
+              {user.followerCount === 1 ? "follower" : "followers"}
+              <span style={{ color: "#444", margin: "0 8px" }}>·</span>
+              <strong style={{ color: "white" }}>{user.followingCount}</strong>{" "}
+              following
+            </div>
+            {!isOwnProfile && (
+              <div style={{ marginBottom: "28px" }}>
+                <FollowButton
+                  handle={user.handle}
+                  initialFollowing={user.followedByMe}
+                  initialFollowerCount={user.followerCount}
+                  onChange={({ following, followerCount }) => {
+                    setUser((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            followedByMe: following,
+                            followerCount,
+                          }
+                        : prev,
+                    );
+                  }}
+                />
+              </div>
+            )}
 
             {user.reviews.length === 0 && (
               <div
