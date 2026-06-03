@@ -107,7 +107,6 @@ export default function SettingsPage() {
         minHeight: "100vh",
         color: "white",
         padding: "24px",
-        fontFamily: "Arial, sans-serif",
       }}
     >
       <div style={{ maxWidth: "520px", margin: "0 auto" }}>
@@ -117,7 +116,15 @@ export default function SettingsPage() {
           </Link>
         </div>
 
-        <h1 style={{ fontSize: "28px", marginBottom: "20px" }}>
+        <h1
+          style={{
+            fontSize: "28px",
+            marginBottom: "20px",
+            fontFamily: "var(--font-display), serif",
+            fontWeight: 400,
+            letterSpacing: "-0.01em",
+          }}
+        >
           Edit profile
         </h1>
 

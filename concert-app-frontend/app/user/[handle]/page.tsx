@@ -210,7 +210,6 @@ export default function UserPage() {
         minHeight: "100vh",
         color: "white",
         padding: "24px",
-        fontFamily: "Arial, sans-serif",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
@@ -263,6 +262,9 @@ export default function UserPage() {
                         fontSize: "28px",
                         margin: "0 0 2px",
                         lineHeight: 1.1,
+                        fontFamily: "var(--font-display), serif",
+                        fontWeight: 400,
+                        letterSpacing: "-0.01em",
                       }}
                     >
                       {user.name}
@@ -277,6 +279,9 @@ export default function UserPage() {
                       fontSize: "28px",
                       margin: 0,
                       lineHeight: 1.1,
+                      fontFamily: "var(--font-display), serif",
+                      fontWeight: 400,
+                      letterSpacing: "-0.01em",
                     }}
                   >
                     @{user.handle}

@@ -89,7 +89,6 @@ export default function ArtistPage() {
         minHeight: "100vh",
         color: "white",
         padding: "24px",
-        fontFamily: "Arial, sans-serif",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
@@ -120,7 +119,15 @@ export default function ArtistPage() {
 
         {artist && (
           <>
-            <h1 style={{ fontSize: "38px", marginBottom: "10px" }}>
+            <h1
+              style={{
+                fontSize: "38px",
+                marginBottom: "10px",
+                fontFamily: "var(--font-display), serif",
+                fontWeight: 400,
+                letterSpacing: "-0.01em",
+              }}
+            >
               {artist.name}
             </h1>
 

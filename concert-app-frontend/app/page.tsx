@@ -107,7 +107,6 @@ export default function Home() {
         minHeight: "100vh",
         color: "white",
         padding: "24px",
-        fontFamily: "Arial, sans-serif",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
@@ -158,7 +157,17 @@ export default function Home() {
           )}
         </div>
 
-        <h1 style={{ fontSize: "34px", marginBottom: "8px" }}>Afterset</h1>
+        <h1
+          style={{
+            fontSize: "34px",
+            marginBottom: "8px",
+            fontFamily: "var(--font-display), serif",
+            fontWeight: 400,
+            letterSpacing: "-0.01em",
+          }}
+        >
+          Afterset
+        </h1>
         <p style={{ color: "#aaa", marginBottom: "24px" }}>
           Review concerts. Discover the best live shows.
         </p>

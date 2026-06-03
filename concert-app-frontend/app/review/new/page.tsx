@@ -247,7 +247,6 @@ export default function NewReviewPage() {
         minHeight: "100vh",
         color: "white",
         padding: "24px",
-        fontFamily: "Arial, sans-serif",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
@@ -257,7 +256,15 @@ export default function NewReviewPage() {
           </Link>
         </div>
 
-        <h1 style={{ fontSize: "30px", marginBottom: "24px" }}>
+        <h1
+          style={{
+            fontSize: "30px",
+            marginBottom: "24px",
+            fontFamily: "var(--font-display), serif",
+            fontWeight: 400,
+            letterSpacing: "-0.01em",
+          }}
+        >
           Write a review
         </h1>
 

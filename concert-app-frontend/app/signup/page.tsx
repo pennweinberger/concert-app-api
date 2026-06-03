@@ -73,7 +73,17 @@ function SignUpForm() {
 
   return (
     <div style={{ maxWidth: "420px", margin: "60px auto 0" }}>
-      <h1 style={{ fontSize: "30px", marginBottom: "24px" }}>Sign up</h1>
+      <h1
+        style={{
+          fontSize: "30px",
+          marginBottom: "24px",
+          fontFamily: "var(--font-display), serif",
+          fontWeight: 400,
+          letterSpacing: "-0.01em",
+        }}
+      >
+        Sign up
+      </h1>
 
       <div style={{ marginBottom: "14px" }}>
         <label
@@ -202,7 +212,6 @@ export default function SignUpPage() {
         minHeight: "100vh",
         color: "white",
         padding: "24px",
-        fontFamily: "Arial, sans-serif",
       }}
     >
       <Suspense fallback={<div style={{ color: "#aaa" }}>Loading…</div>}>

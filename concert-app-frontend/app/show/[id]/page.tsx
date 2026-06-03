@@ -115,7 +115,6 @@ export default function ShowPage() {
         minHeight: "100vh",
         color: "white",
         padding: "24px",
-        fontFamily: "Arial, sans-serif",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
@@ -167,6 +166,9 @@ export default function ShowPage() {
                 fontSize: "38px",
                 margin: "6px 0 10px",
                 lineHeight: 1.1,
+                fontFamily: "var(--font-display), serif",
+                fontWeight: 400,
+                letterSpacing: "-0.01em",
               }}
             >
               <Link
