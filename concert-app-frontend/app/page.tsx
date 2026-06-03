@@ -103,9 +103,9 @@ export default function Home() {
   return (
     <main
       style={{
-        background: "#0f0f0f",
+        background: "#0a0a0a",
         minHeight: "100vh",
-        color: "white",
+        color: "#f4f1ea",
         padding: "24px",
       }}
     >
@@ -126,7 +126,14 @@ export default function Home() {
             <>
               <span>@{authUser.handle}</span>
               <span style={{ color: "#444" }}>·</span>
-              <Link href="/settings" style={{ color: "#7dafff" }}>
+              <Link
+                href="/settings"
+                style={{
+                  color: "#f4f1ea",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "3px",
+                }}
+              >
                 Settings
               </Link>
               <span style={{ color: "#444" }}>·</span>
@@ -136,9 +143,12 @@ export default function Home() {
                   background: "none",
                   border: "none",
                   padding: 0,
-                  color: "#7dafff",
+                  color: "#f4f1ea",
                   cursor: "pointer",
                   fontSize: "14px",
+                  fontFamily: "inherit",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "3px",
                 }}
               >
                 Sign out
@@ -146,11 +156,25 @@ export default function Home() {
             </>
           ) : (
             <>
-              <Link href="/signin" style={{ color: "#7dafff" }}>
+              <Link
+                href="/signin"
+                style={{
+                  color: "#f4f1ea",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "3px",
+                }}
+              >
                 Sign in
               </Link>
               <span style={{ color: "#444" }}>·</span>
-              <Link href="/signup" style={{ color: "#7dafff" }}>
+              <Link
+                href="/signup"
+                style={{
+                  color: "#f4f1ea",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "3px",
+                }}
+              >
                 Sign up
               </Link>
             </>
@@ -179,8 +203,8 @@ export default function Home() {
             width: "100%",
             padding: "14px",
             borderRadius: "12px",
-            background: "#2d6cff",
-            color: "white",
+            background: "#f4f1ea",
+            color: "#0a0a0a",
             fontWeight: "bold",
             textAlign: "center",
             textDecoration: "none",
@@ -202,10 +226,8 @@ export default function Home() {
           <div
             style={{
               display: "flex",
-              gap: "4px",
-              background: "#111",
-              padding: "3px",
-              borderRadius: "10px",
+              gap: "16px",
+              padding: 0,
             }}
             role="tablist"
             aria-label="Feed scope"
@@ -217,11 +239,14 @@ export default function Home() {
                 role="tab"
                 aria-selected={scope === mode}
                 style={{
-                  background: scope === mode ? "#1f1f1f" : "transparent",
-                  color: scope === mode ? "white" : "#888",
+                  background: "transparent",
+                  color: scope === mode ? "#f4f1ea" : "#666",
                   border: "none",
-                  padding: "6px 14px",
-                  borderRadius: "8px",
+                  borderBottom:
+                    scope === mode
+                      ? "2px solid #c8b6ff"
+                      : "2px solid transparent",
+                  padding: "6px 0",
                   cursor: "pointer",
                   fontSize: "13px",
                   fontWeight: scope === mode ? "bold" : "normal",
@@ -270,7 +295,14 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <Link href="/signin?next=/?scope=following" style={{ color: "#7dafff" }}>
+                  <Link
+                    href="/signin?next=/?scope=following"
+                    style={{
+                      color: "#f4f1ea",
+                      textDecoration: "underline",
+                      textUnderlineOffset: "3px",
+                    }}
+                  >
                     Sign in
                   </Link>{" "}
                   to see reviews from people you follow.
@@ -345,8 +377,9 @@ export default function Home() {
                   <Link
                     href={`/user/${item.userHandle}`}
                     style={{
-                      color: "#7dafff",
-                      textDecoration: "none",
+                      color: "#f4f1ea",
+                      textDecoration: "underline",
+                      textUnderlineOffset: "3px",
                       fontWeight: item.userName ? "normal" : "bold",
                       pointerEvents: "auto",
                       position: "relative",

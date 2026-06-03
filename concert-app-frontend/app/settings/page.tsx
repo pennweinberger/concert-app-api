@@ -92,9 +92,9 @@ export default function SettingsPage() {
     return (
       <main
         style={{
-          background: "#0f0f0f",
+          background: "#0a0a0a",
           minHeight: "100vh",
-          color: "white",
+          color: "#f4f1ea",
         }}
       />
     );
@@ -103,15 +103,22 @@ export default function SettingsPage() {
   return (
     <main
       style={{
-        background: "#0f0f0f",
+        background: "#0a0a0a",
         minHeight: "100vh",
-        color: "white",
+        color: "#f4f1ea",
         padding: "24px",
       }}
     >
       <div style={{ maxWidth: "520px", margin: "0 auto" }}>
         <div style={{ marginBottom: "20px" }}>
-          <Link href="/" style={{ color: "#7dafff" }}>
+          <Link
+            href="/"
+            style={{
+              color: "#f4f1ea",
+              textDecoration: "underline",
+              textUnderlineOffset: "3px",
+            }}
+          >
             ← Back to feed
           </Link>
         </div>
@@ -178,7 +185,7 @@ export default function SettingsPage() {
               borderRadius: "10px",
               border: "1px solid #333",
               background: "#1a1a1a",
-              color: "white",
+              color: "#f4f1ea",
               boxSizing: "border-box",
             }}
           />
@@ -209,7 +216,7 @@ export default function SettingsPage() {
               borderRadius: "10px",
               border: "1px solid #333",
               background: "#1a1a1a",
-              color: "white",
+              color: "#f4f1ea",
               boxSizing: "border-box",
             }}
           />
@@ -254,8 +261,8 @@ export default function SettingsPage() {
             padding: "14px",
             borderRadius: "12px",
             border: "none",
-            background: submitting ? "#555" : "#22c55e",
-            color: submitting ? "#aaa" : "white",
+            background: submitting ? "#555" : "#f4f1ea",
+            color: submitting ? "#aaa" : "#0a0a0a",
             cursor: submitting ? "not-allowed" : "pointer",
             fontWeight: "bold",
           }}

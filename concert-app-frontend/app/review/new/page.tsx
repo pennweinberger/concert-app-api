@@ -232,9 +232,9 @@ export default function NewReviewPage() {
     return (
       <main
         style={{
-          background: "#0f0f0f",
+          background: "#0a0a0a",
           minHeight: "100vh",
-          color: "white",
+          color: "#f4f1ea",
         }}
       />
     );
@@ -243,15 +243,22 @@ export default function NewReviewPage() {
   return (
     <main
       style={{
-        background: "#0f0f0f",
+        background: "#0a0a0a",
         minHeight: "100vh",
-        color: "white",
+        color: "#f4f1ea",
         padding: "24px",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
         <div style={{ marginBottom: "20px" }}>
-          <Link href="/" style={{ color: "#7dafff" }}>
+          <Link
+            href="/"
+            style={{
+              color: "#f4f1ea",
+              textDecoration: "underline",
+              textUnderlineOffset: "3px",
+            }}
+          >
             ← Back to feed
           </Link>
         </div>
@@ -295,7 +302,7 @@ export default function NewReviewPage() {
                   borderRadius: "12px",
                   border: "1px solid #333",
                   background: "#1a1a1a",
-                  color: "white",
+                  color: "#f4f1ea",
                 }}
               />
               <button
@@ -306,9 +313,9 @@ export default function NewReviewPage() {
                   borderRadius: "12px",
                   border: "none",
                   background:
-                    searching || !query.trim() ? "#555" : "white",
+                    searching || !query.trim() ? "#555" : "#f4f1ea",
                   color:
-                    searching || !query.trim() ? "#aaa" : "black",
+                    searching || !query.trim() ? "#aaa" : "#0a0a0a",
                   fontWeight: "bold",
                   cursor:
                     searching || !query.trim() ? "not-allowed" : "pointer",
@@ -344,7 +351,7 @@ export default function NewReviewPage() {
                   borderRadius: "14px",
                   border: "1px solid transparent",
                   marginBottom: "12px",
-                  color: "white",
+                  color: "#f4f1ea",
                   cursor: "pointer",
                 }}
               >
@@ -402,7 +409,7 @@ export default function NewReviewPage() {
                   marginTop: "12px",
                   background: "none",
                   border: "none",
-                  color: "#7dafff",
+                  color: "#f4f1ea",
                   textDecoration: "underline",
                   cursor: "pointer",
                   padding: 0,
@@ -448,7 +455,7 @@ export default function NewReviewPage() {
                 borderRadius: "10px",
                 marginBottom: "16px",
                 background: "#1a1a1a",
-                color: "white",
+                color: "#f4f1ea",
                 border: "1px solid #333",
                 resize: "vertical",
                 fontFamily: "inherit",
@@ -479,8 +486,8 @@ export default function NewReviewPage() {
                 padding: "14px",
                 borderRadius: "12px",
                 border: "none",
-                background: submitting ? "#555" : "#22c55e",
-                color: submitting ? "#aaa" : "white",
+                background: submitting ? "#555" : "#f4f1ea",
+                color: submitting ? "#aaa" : "#0a0a0a",
                 cursor: submitting ? "not-allowed" : "pointer",
                 fontWeight: "bold",
               }}

@@ -85,15 +85,22 @@ export default function ArtistPage() {
   return (
     <main
       style={{
-        background: "#0f0f0f",
+        background: "#0a0a0a",
         minHeight: "100vh",
-        color: "white",
+        color: "#f4f1ea",
         padding: "24px",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
         <div style={{ marginBottom: "20px" }}>
-          <Link href="/" style={{ color: "#7dafff" }}>
+          <Link
+            href="/"
+            style={{
+              color: "#f4f1ea",
+              textDecoration: "underline",
+              textUnderlineOffset: "3px",
+            }}
+          >
             ← Back to feed
           </Link>
         </div>
@@ -200,7 +207,7 @@ export default function ArtistPage() {
                     <div style={{ fontSize: "15px" }}>
                       {review.userName && (
                         <span
-                          style={{ color: "white", fontWeight: "bold" }}
+                          style={{ color: "#f4f1ea", fontWeight: "bold" }}
                         >
                           {review.userName}{" "}
                         </span>
@@ -208,8 +215,9 @@ export default function ArtistPage() {
                       <Link
                         href={`/user/${review.userHandle}`}
                         style={{
-                          color: "#7dafff",
-                          textDecoration: "none",
+                          color: "#f4f1ea",
+                          textDecoration: "underline",
+                          textUnderlineOffset: "3px",
                           fontWeight: review.userName ? "normal" : "bold",
                           pointerEvents: "auto",
                           position: "relative",

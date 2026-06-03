@@ -160,8 +160,8 @@ function SignInForm() {
           padding: "14px",
           borderRadius: "12px",
           border: "none",
-          background: submitting ? "#555" : "#2d6cff",
-          color: submitting ? "#aaa" : "white",
+          background: submitting ? "#555" : "#f4f1ea",
+          color: submitting ? "#aaa" : "#0a0a0a",
           cursor: submitting ? "not-allowed" : "pointer",
           fontWeight: "bold",
           marginBottom: "20px",
@@ -174,14 +174,26 @@ function SignInForm() {
         No account?{" "}
         <Link
           href={`/signup?next=${encodeURIComponent(next)}`}
-          style={{ color: "#7dafff" }}
+          style={{
+            color: "#f4f1ea",
+            textDecoration: "underline",
+            textUnderlineOffset: "3px",
+          }}
         >
           Sign up
         </Link>
       </div>
 
       <div style={{ marginTop: "20px", textAlign: "center" }}>
-        <Link href="/" style={{ color: "#7dafff", fontSize: "14px" }}>
+        <Link
+          href="/"
+          style={{
+            color: "#f4f1ea",
+            fontSize: "14px",
+            textDecoration: "underline",
+            textUnderlineOffset: "3px",
+          }}
+        >
           ← Back to feed
         </Link>
       </div>
@@ -193,9 +205,9 @@ export default function SignInPage() {
   return (
     <main
       style={{
-        background: "#0f0f0f",
+        background: "#0a0a0a",
         minHeight: "100vh",
-        color: "white",
+        color: "#f4f1ea",
         padding: "24px",
       }}
     >

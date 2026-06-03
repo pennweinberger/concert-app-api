@@ -206,15 +206,22 @@ export default function UserPage() {
   return (
     <main
       style={{
-        background: "#0f0f0f",
+        background: "#0a0a0a",
         minHeight: "100vh",
-        color: "white",
+        color: "#f4f1ea",
         padding: "24px",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
         <div style={{ marginBottom: "20px" }}>
-          <Link href="/" style={{ color: "#7dafff" }}>
+          <Link
+            href="/"
+            style={{
+              color: "#f4f1ea",
+              textDecoration: "underline",
+              textUnderlineOffset: "3px",
+            }}
+          >
             ← Back to feed
           </Link>
         </div>
@@ -315,10 +322,10 @@ export default function UserPage() {
                 marginBottom: isOwnProfile ? "28px" : "16px",
               }}
             >
-              <strong style={{ color: "white" }}>{user.followerCount}</strong>{" "}
+              <strong style={{ color: "#f4f1ea" }}>{user.followerCount}</strong>{" "}
               {user.followerCount === 1 ? "follower" : "followers"}
               <span style={{ color: "#444", margin: "0 8px" }}>·</span>
-              <strong style={{ color: "white" }}>{user.followingCount}</strong>{" "}
+              <strong style={{ color: "#f4f1ea" }}>{user.followingCount}</strong>{" "}
               following
             </div>
             {!isOwnProfile && (
@@ -393,8 +400,9 @@ export default function UserPage() {
                       <Link
                         href={`/user/${user.handle}`}
                         style={{
-                          color: "#7dafff",
-                          textDecoration: "none",
+                          color: "#f4f1ea",
+                          textDecoration: "underline",
+                          textUnderlineOffset: "3px",
                           fontWeight: "bold",
                           pointerEvents: "auto",
                           position: "relative",
@@ -403,7 +411,7 @@ export default function UserPage() {
                         @{user.handle}
                       </Link>
                       <span style={{ color: "#aaa" }}> reviewed </span>
-                      <span style={{ color: "white", fontWeight: "bold" }}>
+                      <span style={{ color: "#f4f1ea", fontWeight: "bold" }}>
                         {review.show.artist.name}
                       </span>
                     </div>
@@ -455,7 +463,7 @@ export default function UserPage() {
                           padding: "10px",
                           borderRadius: "10px",
                           background: "#111",
-                          color: "white",
+                          color: "#f4f1ea",
                           border: "1px solid #333",
                           resize: "vertical",
                           fontFamily: "inherit",
@@ -477,8 +485,8 @@ export default function UserPage() {
                             padding: "8px 14px",
                             borderRadius: "10px",
                             border: "none",
-                            background: editSubmitting ? "#555" : "#22c55e",
-                            color: editSubmitting ? "#aaa" : "white",
+                            background: editSubmitting ? "#555" : "#f4f1ea",
+                            color: editSubmitting ? "#aaa" : "#0a0a0a",
                             cursor: editSubmitting ? "not-allowed" : "pointer",
                             fontWeight: "bold",
                             fontSize: "14px",
@@ -531,9 +539,12 @@ export default function UserPage() {
                                 background: "none",
                                 border: "none",
                                 padding: 0,
-                                color: "#7dafff",
+                                color: "#f4f1ea",
                                 cursor: "pointer",
                                 fontSize: "13px",
+                                fontFamily: "inherit",
+                                textDecoration: "underline",
+                                textUnderlineOffset: "3px",
                               }}
                             >
                               Edit

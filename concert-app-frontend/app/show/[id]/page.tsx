@@ -111,15 +111,22 @@ export default function ShowPage() {
   return (
     <main
       style={{
-        background: "#0f0f0f",
+        background: "#0a0a0a",
         minHeight: "100vh",
-        color: "white",
+        color: "#f4f1ea",
         padding: "24px",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
         <div style={{ marginBottom: "20px" }}>
-          <Link href="/" style={{ color: "#7dafff" }}>
+          <Link
+            href="/"
+            style={{
+              color: "#f4f1ea",
+              textDecoration: "underline",
+              textUnderlineOffset: "3px",
+            }}
+          >
             ← Back to feed
           </Link>
         </div>
@@ -174,7 +181,7 @@ export default function ShowPage() {
               <Link
                 href={`/artist/${show.artist.id}`}
                 style={{
-                  color: "white",
+                  color: "#f4f1ea",
                   textDecoration: "none",
                   borderBottom: "1px dotted #555",
                 }}
@@ -279,8 +286,8 @@ export default function ShowPage() {
                 width: "100%",
                 padding: "14px",
                 borderRadius: "12px",
-                background: "#2d6cff",
-                color: "white",
+                background: "#f4f1ea",
+                color: "#0a0a0a",
                 fontWeight: "bold",
                 textAlign: "center",
                 textDecoration: "none",
@@ -307,17 +314,18 @@ export default function ShowPage() {
                     key={mode}
                     onClick={() => setSort(mode)}
                     style={{
-                      background: sort === mode ? "#1a1a1a" : "transparent",
-                      color: sort === mode ? "white" : "#888",
-                      border:
+                      background: "transparent",
+                      color: sort === mode ? "#f4f1ea" : "#666",
+                      border: "none",
+                      borderBottom:
                         sort === mode
-                          ? "1px solid #444"
-                          : "1px solid transparent",
-                      padding: "5px 12px",
-                      borderRadius: "8px",
+                          ? "2px solid #c8b6ff"
+                          : "2px solid transparent",
+                      padding: "5px 0",
                       cursor: "pointer",
                       fontSize: "13px",
                       fontWeight: sort === mode ? "bold" : "normal",
+                      fontFamily: "inherit",
                     }}
                   >
                     {mode === "top" ? "Top" : "Recent"}
@@ -370,15 +378,16 @@ export default function ShowPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: "15px" }}>
                     {review.userName && (
-                      <span style={{ color: "white", fontWeight: "bold" }}>
+                      <span style={{ color: "#f4f1ea", fontWeight: "bold" }}>
                         {review.userName}{" "}
                       </span>
                     )}
                     <Link
                       href={`/user/${review.userHandle}`}
                       style={{
-                        color: "#7dafff",
-                        textDecoration: "none",
+                        color: "#f4f1ea",
+                        textDecoration: "underline",
+                        textUnderlineOffset: "3px",
                         fontWeight: review.userName ? "normal" : "bold",
                       }}
                     >
