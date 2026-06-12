@@ -1,11 +1,24 @@
 import Fastify, { type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import fastifyJwt from "@fastify/jwt";
+import rateLimit from "@fastify/rate-limit";
+import * as Sentry from "@sentry/node";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 
 dotenv.config();
+
+// Sentry must initialize before anything that might throw. SDK is a no-op
+// when SENTRY_DSN_API is not set, so this is safe to ship before the env
+// var is configured in Vercel.
+if (process.env.SENTRY_DSN_API) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN_API,
+    environment: process.env.NODE_ENV || "production",
+    tracesSampleRate: 0.1,
+  });
+}
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -23,7 +36,11 @@ declare module "@fastify/jwt" {
 }
 
 const prisma = new PrismaClient();
-const app = Fastify({ logger: true });
+
+// trustProxy: true is required on Vercel so request.ip resolves to the
+// real client IP from X-Forwarded-For instead of the Vercel proxy IP
+// (otherwise rate limiting would key everything off one address).
+const app = Fastify({ logger: true, trustProxy: true });
 
 app.register(cors, {
   origin: true,
@@ -31,6 +48,28 @@ app.register(cors, {
 });
 
 app.register(fastifyJwt, { secret: JWT_SECRET });
+
+// TEMPORARY: in-memory rate limit store. Each Vercel function instance
+// has its own store, so the effective limit is (instances * limit). For
+// real production launch this should be replaced with a Redis/Upstash
+// backend so limits are global across instances. See follow-up list.
+app.register(rateLimit, {
+  global: false,
+  // Default fallback config; per-route limits are attached at the
+  // route definition site below.
+  max: 1000,
+  timeWindow: "1 minute",
+});
+
+// Catch unhandled errors and forward to Sentry (no-op if Sentry not
+// initialized). Falls through to Fastify's default error response.
+app.setErrorHandler((err, request, reply) => {
+  if (process.env.SENTRY_DSN_API) {
+    Sentry.captureException(err);
+  }
+  request.log.error(err);
+  reply.send(err);
+});
 
 // --- Validation helpers ----------------------------------------------------
 
@@ -59,13 +98,63 @@ async function getOptionalUserId(
   }
 }
 
+// --- Pagination helpers ----------------------------------------------------
+
+const DEFAULT_PAGE_LIMIT = 20;
+const MAX_PAGE_LIMIT = 100;
+
+/** Parse + clamp a `limit` query param. */
+function parseLimit(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === "") {
+    return DEFAULT_PAGE_LIMIT;
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_PAGE_LIMIT;
+  return Math.min(Math.floor(n), MAX_PAGE_LIMIT);
+}
+
+/** Parse an ISO-timestamp cursor query param. Returns Date or null. */
+function parseCursor(raw: unknown): Date | null {
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * For a list of review ids, fetch the subset that the given viewer has
+ * liked. Returns a Set for O(1) lookup. Empty Set when viewerId is null
+ * or reviewIds is empty.
+ *
+ * Used instead of loading `likes: { select: { userId: true } }` per
+ * review — that pattern ships every like's userId on every response,
+ * which doesn't scale.
+ */
+async function loadViewerLikedSet(
+  viewerId: string | null,
+  reviewIds: string[],
+): Promise<Set<string>> {
+  if (!viewerId || reviewIds.length === 0) return new Set();
+  const rows = await prisma.reviewLike.findMany({
+    where: { userId: viewerId, reviewId: { in: reviewIds } },
+    select: { reviewId: true },
+  });
+  return new Set(rows.map((r) => r.reviewId));
+}
+
 app.get("/health", async () => {
   return { ok: true };
 });
 
 // --- Auth ------------------------------------------------------------------
 
-app.post("/auth/register", async (request, reply) => {
+app.post(
+  "/auth/register",
+  {
+    config: {
+      rateLimit: { max: 3, timeWindow: "1 hour" },
+    },
+  },
+  async (request, reply) => {
   const body = request.body as { handle?: unknown; password?: unknown };
 
   const handle = normalizeHandle(body.handle);
@@ -110,7 +199,14 @@ app.post("/auth/register", async (request, reply) => {
   }
 });
 
-app.post("/auth/login", async (request, reply) => {
+app.post(
+  "/auth/login",
+  {
+    config: {
+      rateLimit: { max: 5, timeWindow: "1 minute" },
+    },
+  },
+  async (request, reply) => {
   const body = request.body as { handle?: unknown; password?: unknown };
 
   const handle = normalizeHandle(body.handle);
@@ -150,7 +246,14 @@ app.get("/auth/me", async (request, reply) => {
 
 // --- End auth --------------------------------------------------------------
 
-app.get("/artists/search", async (request, reply) => {
+app.get(
+  "/artists/search",
+  {
+    config: {
+      rateLimit: { max: 60, timeWindow: "1 minute" },
+    },
+  },
+  async (request, reply) => {
   const { q } = request.query as { q?: string };
 
   if (!q) {
@@ -179,7 +282,14 @@ app.get("/artists/search", async (request, reply) => {
   }
 });
 
-app.get("/shows/search", async (request, reply) => {
+app.get(
+  "/shows/search",
+  {
+    config: {
+      rateLimit: { max: 60, timeWindow: "1 minute" },
+    },
+  },
+  async (request, reply) => {
   const { q } = request.query as { q?: string };
 
   if (!q) {
@@ -544,19 +654,24 @@ app.delete("/reviews/:id/like", async (request, reply) => {
 
 app.get("/feed", async (request, reply) => {
   const viewerId = await getOptionalUserId(request);
-  const { scope } = request.query as { scope?: string };
-  const followingScope = scope === "following";
+  const query = request.query as {
+    scope?: string;
+    cursor?: string;
+    limit?: string;
+  };
+  const followingScope = query.scope === "following";
+  const limit = parseLimit(query.limit);
+  const cursor = parseCursor(query.cursor);
 
   // /feed?scope=following without a signed-in viewer = empty by design;
   // the frontend renders a sign-in prompt instead of an error.
   if (followingScope && !viewerId) {
-    return { items: [] };
+    return { items: [], nextCursor: null };
   }
 
   try {
     // For the following scope, pre-resolve the set of userIds the viewer
-    // follows and filter the review query by it. Plain set lookup, no
-    // join — keeps the existing review query shape.
+    // follows.
     let followingIds: string[] | null = null;
     if (followingScope && viewerId) {
       const follows = await prisma.follow.findMany({
@@ -565,13 +680,20 @@ app.get("/feed", async (request, reply) => {
       });
       followingIds = follows.map((f) => f.followingId);
       if (followingIds.length === 0) {
-        return { items: [] };
+        return { items: [], nextCursor: null };
       }
     }
 
+    // Fetch limit+1 so we know whether there's another page.
+    const reviewWhere = {
+      ...(followingIds ? { userId: { in: followingIds } } : {}),
+      ...(cursor ? { publishedAt: { lt: cursor } } : {}),
+    };
+
     const reviews = await prisma.review.findMany({
-      ...(followingIds ? { where: { userId: { in: followingIds } } } : {}),
+      where: reviewWhere,
       orderBy: { publishedAt: "desc" },
+      take: limit + 1,
       include: {
         user: true,
         show: {
@@ -580,9 +702,14 @@ app.get("/feed", async (request, reply) => {
             venue: true,
           },
         },
-        likes: { select: { userId: true } },
+        _count: { select: { likes: true } },
       },
     });
+
+    // Batched per-viewer liked lookup — one small query instead of
+    // shipping all userIds per review.
+    const reviewIds = reviews.map((r) => r.id);
+    const likedSet = await loadViewerLikedSet(viewerId, reviewIds);
 
     const reviewItems = reviews.map((review) => ({
       type: "review" as const,
@@ -593,10 +720,8 @@ app.get("/feed", async (request, reply) => {
       ratingOverall: review.ratingOverall,
       reviewTextRaw: review.reviewTextRaw,
       publishedAt: review.publishedAt,
-      likeCount: review.likes.length,
-      liked: viewerId
-        ? review.likes.some((l) => l.userId === viewerId)
-        : false,
+      likeCount: review._count.likes,
+      liked: likedSet.has(review.id),
       show: {
         id: review.show.id,
         localDate: review.show.localDate,
@@ -609,7 +734,14 @@ app.get("/feed", async (request, reply) => {
 
     // All-tab semantics: reviews only.
     if (!followingScope) {
-      return { items: reviewItems };
+      const hasMore = reviewItems.length > limit;
+      const page = hasMore ? reviewItems.slice(0, limit) : reviewItems;
+      const last = page[page.length - 1];
+      const nextCursor =
+        hasMore && last?.publishedAt
+          ? new Date(last.publishedAt).toISOString()
+          : null;
+      return { items: page, nextCursor };
     }
 
     // Following-tab semantics: reviews PLUS attendance-only activity
@@ -620,8 +752,12 @@ app.get("/feed", async (request, reply) => {
     );
 
     const attendances = await prisma.attendance.findMany({
-      where: { userId: { in: followingIds ?? [] } },
+      where: {
+        userId: { in: followingIds ?? [] },
+        ...(cursor ? { attendedAt: { lt: cursor } } : {}),
+      },
       orderBy: { attendedAt: "desc" },
+      take: limit + 1,
       include: {
         user: true,
         show: {
@@ -652,8 +788,6 @@ app.get("/feed", async (request, reply) => {
         },
       }));
 
-    // Sort the combined feed by event timestamp (publishedAt for
-    // reviews, attendedAt for attendance), most recent first.
     const ts = (item: (typeof reviewItems)[number] | (typeof attendanceItems)[number]) =>
       item.type === "review"
         ? item.publishedAt
@@ -661,11 +795,15 @@ app.get("/feed", async (request, reply) => {
           : 0
         : new Date(item.attendedAt).getTime();
 
-    const items = [...reviewItems, ...attendanceItems].sort(
+    const merged = [...reviewItems, ...attendanceItems].sort(
       (a, b) => ts(b) - ts(a),
     );
+    const hasMore = merged.length > limit;
+    const page = hasMore ? merged.slice(0, limit) : merged;
+    const last = page[page.length - 1];
+    const nextCursor = hasMore && last ? new Date(ts(last)).toISOString() : null;
 
-    return { items };
+    return { items: page, nextCursor };
   } catch (err: any) {
     app.log.error(err);
     return reply.status(500).send({
@@ -678,68 +816,80 @@ app.get("/feed", async (request, reply) => {
 app.get("/artists/:id", async (request, reply) => {
   const { id } = request.params as { id: string };
   const viewerId = await getOptionalUserId(request);
+  const query = request.query as { cursor?: string; limit?: string };
+  const limit = parseLimit(query.limit);
+  const cursor = parseCursor(query.cursor);
 
   try {
     const artist = await prisma.artist.findUnique({
       where: { id },
-      include: {
-        shows: {
-          include: {
-            venue: true,
-            reviews: {
-              include: {
-                user: true,
-                likes: { select: { userId: true } },
-              },
-            },
-          },
-        },
-      },
+      select: { id: true, name: true },
     });
-
     if (!artist) {
       return reply.status(404).send({ error: "Artist not found" });
     }
 
-    const allReviews = artist.shows.flatMap((show) =>
-      show.reviews.map((review) => ({
-        review,
-        show: {
-          id: show.id,
-          localDate: show.localDate,
-          venue: { name: show.venue.name, city: show.venue.city },
-        },
-      })),
-    );
+    // Reviews live on shows; we filter by show.artistId. Aggregate
+    // count + average across all of them (not just the page).
+    const reviewStats = await prisma.review.aggregate({
+      where: { show: { artistId: id } },
+      _count: true,
+      _avg: { ratingOverall: true },
+    });
 
-    const average =
-      allReviews.length > 0
-        ? allReviews.reduce((sum, r) => sum + r.review.ratingOverall, 0) /
-          allReviews.length
-        : 0;
+    // Paginated reviews page.
+    const reviews = await prisma.review.findMany({
+      where: {
+        show: { artistId: id },
+        ...(cursor ? { publishedAt: { lt: cursor } } : {}),
+      },
+      orderBy: { publishedAt: "desc" },
+      take: limit + 1,
+      include: {
+        user: true,
+        show: {
+          select: {
+            id: true,
+            localDate: true,
+            venue: { select: { name: true, city: true } },
+          },
+        },
+        _count: { select: { likes: true } },
+      },
+    });
+
+    const reviewIds = reviews.map((r) => r.id);
+    const likedSet = await loadViewerLikedSet(viewerId, reviewIds);
+
+    const reviewsHasMore = reviews.length > limit;
+    const reviewsPage = reviewsHasMore ? reviews.slice(0, limit) : reviews;
+    const reviewsLast = reviewsPage[reviewsPage.length - 1];
+    const reviewsNextCursor =
+      reviewsHasMore && reviewsLast?.publishedAt
+        ? new Date(reviewsLast.publishedAt).toISOString()
+        : null;
 
     return {
       id: artist.id,
       name: artist.name,
-      averageRating: Number(average.toFixed(1)),
-      reviewCount: allReviews.length,
-      reviews: allReviews.map(({ review, show }) => ({
+      averageRating: Number((reviewStats._avg.ratingOverall ?? 0).toFixed(1)),
+      reviewCount: reviewStats._count,
+      reviews: reviewsPage.map((review) => ({
         id: review.id,
         userHandle: review.user.handle,
         userName: review.user.name,
         userAvatarUrl: review.user.avatarUrl,
         ratingOverall: review.ratingOverall,
         reviewTextRaw: review.reviewTextRaw,
-        likeCount: review.likes.length,
-        liked: viewerId
-          ? review.likes.some((l) => l.userId === viewerId)
-          : false,
+        likeCount: review._count.likes,
+        liked: likedSet.has(review.id),
         show: {
-          id: show.id,
-          localDate: show.localDate,
-          venue: show.venue,
+          id: review.show.id,
+          localDate: review.show.localDate,
+          venue: review.show.venue,
         },
       })),
+      reviewsNextCursor,
     };
   } catch (err: any) {
     app.log.error(err);
@@ -826,52 +976,72 @@ app.delete("/shows/:id/attend", async (request, reply) => {
 app.get("/shows/:id", async (request, reply) => {
   const { id } = request.params as { id: string };
   const viewerId = await getOptionalUserId(request);
+  const query = request.query as { cursor?: string; limit?: string };
+  const limit = parseLimit(query.limit);
+  const cursor = parseCursor(query.cursor);
 
   try {
-    const show = await prisma.show.findUnique({
-      where: { id },
-      include: {
-        artist: true,
-        venue: true,
-        reviews: {
-          orderBy: { publishedAt: "desc" },
-          include: {
-            user: true,
-            likes: { select: { userId: true } },
-          },
-        },
-        attendances: { select: { userId: true } },
-      },
-    });
+    // Show + counts (aggregate queries so we don't load every review and
+    // attendance row to compute totals).
+    const [show, reviewStats, attendanceCount, viewerAttendance] =
+      await Promise.all([
+        prisma.show.findUnique({
+          where: { id },
+          include: { artist: true, venue: true },
+        }),
+        prisma.review.aggregate({
+          where: { showId: id },
+          _count: true,
+          _avg: { ratingOverall: true },
+        }),
+        prisma.attendance.count({ where: { showId: id } }),
+        viewerId
+          ? prisma.attendance.findUnique({
+              where: { userId_showId: { userId: viewerId, showId: id } },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+      ]);
 
     if (!show) {
       return reply.status(404).send({ error: "Show not found" });
     }
 
-    const average =
-      show.reviews.length > 0
-        ? show.reviews.reduce((sum, r) => sum + r.ratingOverall, 0) /
-          show.reviews.length
-        : 0;
+    // Paginated reviews page (cursor + limit+1).
+    const reviews = await prisma.review.findMany({
+      where: {
+        showId: id,
+        ...(cursor ? { publishedAt: { lt: cursor } } : {}),
+      },
+      orderBy: { publishedAt: "desc" },
+      take: limit + 1,
+      include: {
+        user: true,
+        _count: { select: { likes: true } },
+      },
+    });
+
+    const reviewIds = reviews.map((r) => r.id);
+    const likedSet = await loadViewerLikedSet(viewerId, reviewIds);
+
+    const reviewsHasMore = reviews.length > limit;
+    const reviewsPage = reviewsHasMore ? reviews.slice(0, limit) : reviews;
+    const reviewsLast = reviewsPage[reviewsPage.length - 1];
+    const reviewsNextCursor =
+      reviewsHasMore && reviewsLast?.publishedAt
+        ? new Date(reviewsLast.publishedAt).toISOString()
+        : null;
 
     return {
       id: show.id,
       localDate: show.localDate,
-      artist: {
-        id: show.artist.id,
-        name: show.artist.name,
-      },
-      venue: {
-        name: show.venue.name,
-        city: show.venue.city,
-      },
-      averageRating: Number(average.toFixed(1)),
-      reviewCount: show.reviews.length,
-      attendanceCount: show.attendances.length,
-      attendedByMe: viewerId
-        ? show.attendances.some((a) => a.userId === viewerId)
-        : false,
-      reviews: show.reviews.map((review) => ({
+      artist: { id: show.artist.id, name: show.artist.name },
+      venue: { name: show.venue.name, city: show.venue.city },
+      averageRating: Number((reviewStats._avg.ratingOverall ?? 0).toFixed(1)),
+      reviewCount: reviewStats._count,
+      attendanceCount,
+      attendedByMe: !!viewerAttendance,
+      reviews: reviewsPage.map((review) => ({
         id: review.id,
         userHandle: review.user.handle,
         userName: review.user.name,
@@ -879,11 +1049,10 @@ app.get("/shows/:id", async (request, reply) => {
         ratingOverall: review.ratingOverall,
         reviewTextRaw: review.reviewTextRaw,
         publishedAt: review.publishedAt,
-        likeCount: review.likes.length,
-        liked: viewerId
-          ? review.likes.some((l) => l.userId === viewerId)
-          : false,
+        likeCount: review._count.likes,
+        liked: likedSet.has(review.id),
       })),
+      reviewsNextCursor,
     };
   } catch (err: any) {
     app.log.error(err);
@@ -897,30 +1066,19 @@ app.get("/shows/:id", async (request, reply) => {
 app.get("/users/:handle", async (request, reply) => {
   const { handle } = request.params as { handle: string };
   const viewerId = await getOptionalUserId(request);
+  const query = request.query as { cursor?: string; limit?: string };
+  const limit = parseLimit(query.limit);
+  const cursor = parseCursor(query.cursor);
 
   try {
     const user = await prisma.user.findUnique({
       where: { handle },
-      include: {
-        reviews: {
-          orderBy: { publishedAt: "desc" },
-          include: {
-            show: {
-              include: {
-                artist: true,
-                venue: true,
-              },
-            },
-            likes: { select: { userId: true } },
-          },
-        },
-        attendances: {
-          include: {
-            show: {
-              select: { artistId: true, venueId: true },
-            },
-          },
-        },
+      select: {
+        id: true,
+        handle: true,
+        name: true,
+        avatarUrl: true,
+        createdAt: true,
       },
     });
 
@@ -928,39 +1086,72 @@ app.get("/users/:handle", async (request, reply) => {
       return reply.status(404).send({ error: "User not found" });
     }
 
-    // Attendance-derived stats: distinct shows attended (== count of
-    // Attendance rows since (userId, showId) is unique), distinct
-    // artists seen, distinct venues visited.
-    const attendedShowCount = user.attendances.length;
+    // Attendance-derived stats: we need distinct artist + venue counts,
+    // so we must load (artistId, venueId) for every attendance — but
+    // just those two integers per row, no relations. For 1k users with
+    // <1000 attendances each this is fine; beyond that, denormalize
+    // these as columns on User and increment/decrement in the
+    // attend/unattend transactions.
+    const attendanceShows = await prisma.attendance.findMany({
+      where: { userId: user.id },
+      select: { show: { select: { artistId: true, venueId: true } } },
+    });
+    const attendedShowCount = attendanceShows.length;
     const artistsSeenCount = new Set(
-      user.attendances.map((a) => a.show.artistId),
+      attendanceShows.map((a) => a.show.artistId),
     ).size;
     const venuesVisitedCount = new Set(
-      user.attendances.map((a) => a.show.venueId),
+      attendanceShows.map((a) => a.show.venueId),
     ).size;
 
-    const averageRating =
-      user.reviews.length > 0
-        ? user.reviews.reduce((sum, r) => sum + r.ratingOverall, 0) /
-          user.reviews.length
-        : 0;
-
-    // Follow counts + (for an authed viewer who isn't the profile owner)
-    // whether the viewer follows this user.
-    const [followerCount, followingCount, viewerFollow] = await Promise.all([
-      prisma.follow.count({ where: { followingId: user.id } }),
-      prisma.follow.count({ where: { followerId: user.id } }),
-      viewerId && viewerId !== user.id
-        ? prisma.follow.findUnique({
-            where: {
-              followerId_followingId: {
-                followerId: viewerId,
-                followingId: user.id,
+    // Review aggregates + follow counts in parallel.
+    const [reviewStats, followerCount, followingCount, viewerFollow] =
+      await Promise.all([
+        prisma.review.aggregate({
+          where: { userId: user.id },
+          _count: true,
+          _avg: { ratingOverall: true },
+        }),
+        prisma.follow.count({ where: { followingId: user.id } }),
+        prisma.follow.count({ where: { followerId: user.id } }),
+        viewerId && viewerId !== user.id
+          ? prisma.follow.findUnique({
+              where: {
+                followerId_followingId: {
+                  followerId: viewerId,
+                  followingId: user.id,
+                },
               },
-            },
-          })
-        : Promise.resolve(null),
-    ]);
+            })
+          : Promise.resolve(null),
+      ]);
+
+    // Paginated reviews page.
+    const reviews = await prisma.review.findMany({
+      where: {
+        userId: user.id,
+        ...(cursor ? { publishedAt: { lt: cursor } } : {}),
+      },
+      orderBy: { publishedAt: "desc" },
+      take: limit + 1,
+      include: {
+        show: {
+          include: { artist: true, venue: true },
+        },
+        _count: { select: { likes: true } },
+      },
+    });
+
+    const reviewIds = reviews.map((r) => r.id);
+    const likedSet = await loadViewerLikedSet(viewerId, reviewIds);
+
+    const reviewsHasMore = reviews.length > limit;
+    const reviewsPage = reviewsHasMore ? reviews.slice(0, limit) : reviews;
+    const reviewsLast = reviewsPage[reviewsPage.length - 1];
+    const reviewsNextCursor =
+      reviewsHasMore && reviewsLast?.publishedAt
+        ? new Date(reviewsLast.publishedAt).toISOString()
+        : null;
 
     return {
       handle: user.handle,
@@ -970,20 +1161,18 @@ app.get("/users/:handle", async (request, reply) => {
       attendedShowCount,
       artistsSeenCount,
       venuesVisitedCount,
-      reviewCount: user.reviews.length,
-      averageRating: Number(averageRating.toFixed(1)),
+      reviewCount: reviewStats._count,
+      averageRating: Number((reviewStats._avg.ratingOverall ?? 0).toFixed(1)),
       followerCount,
       followingCount,
       followedByMe: !!viewerFollow,
-      reviews: user.reviews.map((review) => ({
+      reviews: reviewsPage.map((review) => ({
         id: review.id,
         ratingOverall: review.ratingOverall,
         reviewTextRaw: review.reviewTextRaw,
         publishedAt: review.publishedAt,
-        likeCount: review.likes.length,
-        liked: viewerId
-          ? review.likes.some((l) => l.userId === viewerId)
-          : false,
+        likeCount: review._count.likes,
+        liked: likedSet.has(review.id),
         show: {
           id: review.show.id,
           localDate: review.show.localDate,
@@ -997,6 +1186,7 @@ app.get("/users/:handle", async (request, reply) => {
           },
         },
       })),
+      reviewsNextCursor,
     };
   } catch (err: any) {
     app.log.error(err);
