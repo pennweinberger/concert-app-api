@@ -352,10 +352,8 @@ export default function ShowPage() {
               <div
                 key={review.id}
                 style={{
-                  background: "#1a1a1a",
-                  padding: "18px",
-                  borderRadius: "16px",
-                  marginBottom: "14px",
+                  padding: "28px 0",
+                  borderBottom: "1px solid #1f1f1f",
                   display: "flex",
                   gap: "12px",
                 }}

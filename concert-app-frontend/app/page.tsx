@@ -320,10 +320,8 @@ export default function Home() {
           <div
             key={item.reviewId}
             style={{
-              background: "#1a1a1a",
-              padding: "16px",
-              borderRadius: "14px",
-              marginBottom: "12px",
+              padding: "28px 0",
+              borderBottom: "1px solid #1f1f1f",
               position: "relative",
             }}
           >
@@ -336,7 +334,6 @@ export default function Home() {
                 position: "absolute",
                 inset: 0,
                 zIndex: 0,
-                borderRadius: "14px",
               }}
             />
             <div
