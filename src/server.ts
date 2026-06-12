@@ -53,11 +53,14 @@ app.register(fastifyJwt, { secret: JWT_SECRET });
 // has its own store, so the effective limit is (instances * limit). For
 // real production launch this should be replaced with a Redis/Upstash
 // backend so limits are global across instances. See follow-up list.
+//
+// Registered globally with a permissive default; tight per-route limits
+// are attached via config.rateLimit at the route definition site below
+// and override the global default. (With global:false in v9, route
+// configs were not being applied — hooks never registered.)
 app.register(rateLimit, {
-  global: false,
-  // Default fallback config; per-route limits are attached at the
-  // route definition site below.
-  max: 1000,
+  global: true,
+  max: 300,
   timeWindow: "1 minute",
 });
 
