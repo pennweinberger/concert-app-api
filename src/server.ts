@@ -331,15 +331,27 @@ app.post("/reviews", async (request, reply) => {
   }
 
   try {
-    const review = await prisma.review.create({
-      data: {
-        userId,
-        showId,
-        ratingOverall,
-        reviewTextRaw,
-        moderationStatus: "ALLOWED",
-        publishedAt: new Date(),
-      },
+    // Atomic: create the review AND ensure an attendance row exists.
+    // A review always implies attendance (enforced by Q1 = block-on-
+    // unattend), so we upsert here so the invariant holds even when
+    // the user has never explicitly clicked Mark as Attended.
+    const review = await prisma.$transaction(async (tx) => {
+      const created = await tx.review.create({
+        data: {
+          userId,
+          showId,
+          ratingOverall,
+          reviewTextRaw,
+          moderationStatus: "ALLOWED",
+          publishedAt: new Date(),
+        },
+      });
+      await tx.attendance.upsert({
+        where: { userId_showId: { userId, showId } },
+        create: { userId, showId },
+        update: {},
+      });
+      return created;
     });
 
     return {
@@ -667,6 +679,79 @@ app.get("/artists/:id", async (request, reply) => {
   }
 });
 
+app.post("/shows/:id/attend", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const { userId } = request.user;
+  const { id: showId } = request.params as { id: string };
+
+  const show = await prisma.show.findUnique({ where: { id: showId } });
+  if (!show) {
+    return reply.status(404).send({ error: "Show not found" });
+  }
+
+  try {
+    // Idempotent: (userId, showId) is unique.
+    await prisma.attendance.upsert({
+      where: { userId_showId: { userId, showId } },
+      create: { userId, showId },
+      update: {},
+    });
+    const attendanceCount = await prisma.attendance.count({
+      where: { showId },
+    });
+    return { attended: true, attendanceCount };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to mark attendance",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+app.delete("/shows/:id/attend", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const { userId } = request.user;
+  const { id: showId } = request.params as { id: string };
+
+  // Invariant: a review always implies attendance. Refuse to unattend
+  // if the user has a review for this show; they have to delete the
+  // review first.
+  const existingReview = await prisma.review.findFirst({
+    where: { userId, showId },
+    select: { id: true },
+  });
+  if (existingReview) {
+    return reply.status(409).send({
+      error: "Can't unattend a show you've reviewed. Delete the review first.",
+    });
+  }
+
+  try {
+    await prisma.attendance.deleteMany({ where: { userId, showId } });
+    const attendanceCount = await prisma.attendance.count({
+      where: { showId },
+    });
+    return { attended: false, attendanceCount };
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to unmark attendance",
+      details: err?.message || String(err),
+    });
+  }
+});
+
 app.get("/shows/:id", async (request, reply) => {
   const { id } = request.params as { id: string };
   const viewerId = await getOptionalUserId(request);
@@ -684,6 +769,7 @@ app.get("/shows/:id", async (request, reply) => {
             likes: { select: { userId: true } },
           },
         },
+        attendances: { select: { userId: true } },
       },
     });
 
@@ -710,6 +796,10 @@ app.get("/shows/:id", async (request, reply) => {
       },
       averageRating: Number(average.toFixed(1)),
       reviewCount: show.reviews.length,
+      attendanceCount: show.attendances.length,
+      attendedByMe: viewerId
+        ? show.attendances.some((a) => a.userId === viewerId)
+        : false,
       reviews: show.reviews.map((review) => ({
         id: review.id,
         userHandle: review.user.handle,
@@ -753,6 +843,13 @@ app.get("/users/:handle", async (request, reply) => {
             likes: { select: { userId: true } },
           },
         },
+        attendances: {
+          include: {
+            show: {
+              select: { artistId: true, venueId: true },
+            },
+          },
+        },
       },
     });
 
@@ -760,7 +857,17 @@ app.get("/users/:handle", async (request, reply) => {
       return reply.status(404).send({ error: "User not found" });
     }
 
-    const distinctShows = new Set(user.reviews.map((r) => r.showId)).size;
+    // Attendance-derived stats: distinct shows attended (== count of
+    // Attendance rows since (userId, showId) is unique), distinct
+    // artists seen, distinct venues visited.
+    const attendedShowCount = user.attendances.length;
+    const artistsSeenCount = new Set(
+      user.attendances.map((a) => a.show.artistId),
+    ).size;
+    const venuesVisitedCount = new Set(
+      user.attendances.map((a) => a.show.venueId),
+    ).size;
+
     const averageRating =
       user.reviews.length > 0
         ? user.reviews.reduce((sum, r) => sum + r.ratingOverall, 0) /
@@ -789,7 +896,9 @@ app.get("/users/:handle", async (request, reply) => {
       name: user.name,
       avatarUrl: user.avatarUrl,
       joinedAt: user.createdAt,
-      showCount: distinctShows,
+      attendedShowCount,
+      artistsSeenCount,
+      venuesVisitedCount,
       reviewCount: user.reviews.length,
       averageRating: Number(averageRating.toFixed(1)),
       followerCount,

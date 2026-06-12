@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { authHeaders } from "../../lib/auth";
+import { authHeaders, useAuthUser } from "../../lib/auth";
 import LikeButton from "../../components/LikeButton";
 import StarRating from "../../components/StarRating";
 import Avatar from "../../components/Avatar";
+import AttendanceButton from "../../components/AttendanceButton";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -30,6 +31,8 @@ type ShowDetail = {
   venue: { name: string; city: string };
   averageRating: number;
   reviewCount: number;
+  attendanceCount: number;
+  attendedByMe: boolean;
   reviews: Review[];
 };
 
@@ -38,11 +41,20 @@ type SortMode = "top" | "recent";
 export default function ShowPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
+  const authUser = useAuthUser();
 
   const [show, setShow] = useState<ShowDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState<SortMode>("recent");
+
+  // True when the signed-in viewer has a review on this show. Disables
+  // unattend (the server returns 409 anyway, but the UI should reflect
+  // the constraint upfront).
+  const hasMyReview = !!(
+    authUser &&
+    show?.reviews.some((r) => r.userHandle === authUser.handle)
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -206,6 +218,8 @@ export default function ShowPage() {
               </span>
               <span style={{ color: "#fbbf24", fontSize: "20px" }}>★</span>
               <span style={{ color: "#aaa", fontSize: "14px" }}>
+                {show.attendanceCount} Attended
+                <span style={{ color: "#444", margin: "0 6px" }}>·</span>
                 {show.reviewCount}{" "}
                 {show.reviewCount === 1 ? "Review" : "Reviews"}
               </span>
@@ -278,7 +292,7 @@ export default function ShowPage() {
               </div>
             )}
 
-            {/* --- CTA --- */}
+            {/* --- CTAs: review (primary) + attend (secondary) --- */}
             <Link
               href={`/review/new?showId=${show.id}`}
               style={{
@@ -291,12 +305,27 @@ export default function ShowPage() {
                 fontWeight: "bold",
                 textAlign: "center",
                 textDecoration: "none",
-                marginBottom: "28px",
+                marginBottom: "10px",
                 boxSizing: "border-box",
               }}
             >
               + Write a Review for this Show
             </Link>
+            <div style={{ marginBottom: "28px" }}>
+              <AttendanceButton
+                showId={show.id}
+                initialAttended={show.attendedByMe}
+                initialAttendanceCount={show.attendanceCount}
+                blockedByReview={hasMyReview}
+                onChange={({ attended, attendanceCount }) => {
+                  setShow((prev) =>
+                    prev
+                      ? { ...prev, attendedByMe: attended, attendanceCount }
+                      : prev,
+                  );
+                }}
+              />
+            </div>
 
             {/* --- Sort toggle (only if there are reviews to sort) --- */}
             {show.reviews.length > 1 && (

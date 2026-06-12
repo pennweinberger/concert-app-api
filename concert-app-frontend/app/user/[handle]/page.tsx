@@ -32,7 +32,9 @@ type UserDetail = {
   name: string | null;
   avatarUrl: string | null;
   joinedAt: string;
-  showCount: number;
+  attendedShowCount: number;
+  artistsSeenCount: number;
+  venuesVisitedCount: number;
   reviewCount: number;
   averageRating: number;
   followerCount: number;
@@ -303,13 +305,39 @@ export default function UserPage() {
                 month: "long",
               })}
             </div>
-            <div style={{ color: "#aaa", marginBottom: "10px" }}>
-              {user.showCount === 0 ? (
-                "No shows reviewed yet"
+            {/* Attendance-derived primary stats: shows attended, distinct
+                artists, distinct venues. Reviews + avg rating sit on a
+                secondary line below. */}
+            <div style={{ color: "#aaa", marginBottom: "6px" }}>
+              {user.attendedShowCount === 0 ? (
+                "No shows attended yet"
               ) : (
                 <>
-                  {user.showCount}{" "}
-                  {user.showCount === 1 ? "show" : "shows"} reviewed
+                  <strong style={{ color: "#f4f1ea" }}>
+                    {user.attendedShowCount}
+                  </strong>{" "}
+                  {user.attendedShowCount === 1 ? "show" : "shows"} attended
+                  <span style={{ color: "#444", margin: "0 8px" }}>·</span>
+                  <strong style={{ color: "#f4f1ea" }}>
+                    {user.artistsSeenCount}
+                  </strong>{" "}
+                  {user.artistsSeenCount === 1 ? "artist" : "artists"} seen
+                  <span style={{ color: "#444", margin: "0 8px" }}>·</span>
+                  <strong style={{ color: "#f4f1ea" }}>
+                    {user.venuesVisitedCount}
+                  </strong>{" "}
+                  {user.venuesVisitedCount === 1 ? "venue" : "venues"}{" "}
+                  visited
+                </>
+              )}
+            </div>
+            <div style={{ color: "#aaa", marginBottom: "10px" }}>
+              <strong style={{ color: "#f4f1ea" }}>
+                {user.reviewCount}
+              </strong>{" "}
+              {user.reviewCount === 1 ? "review" : "reviews"} written
+              {user.reviewCount > 0 && (
+                <>
                   <span style={{ color: "#444", margin: "0 8px" }}>·</span>
                   {user.averageRating} ★ avg
                 </>

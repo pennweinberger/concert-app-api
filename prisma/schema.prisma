@@ -25,6 +25,7 @@ model User {
 
   reviews      Review[]
   reviewLikes  ReviewLike[]
+  attendances  Attendance[]
 
   // Self-referencing follow graph. `following` = Follow rows where
   // this user is the follower (i.e. users they follow). `followers`
@@ -79,6 +80,7 @@ model Show {
   artist           Artist   @relation(fields: [artistId], references: [id])
   venue            Venue    @relation(fields: [venueId], references: [id])
   reviews          Review[]
+  attendances      Attendance[]
   externalRefs     ShowExternalRef[]
   setlistCache     SetlistCache?
 
@@ -141,6 +143,19 @@ model ReviewLike {
 
   @@unique([userId, reviewId])
   @@index([reviewId])
+}
+
+model Attendance {
+  id         String   @id @default(cuid())
+  userId     String
+  showId     String
+  attendedAt DateTime @default(now())
+
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  show       Show @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, showId])
+  @@index([showId])
 }
 
 model SetlistCache {
