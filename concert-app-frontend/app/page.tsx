@@ -124,7 +124,16 @@ export default function Home() {
         >
           {authUser ? (
             <>
-              <span>@{authUser.handle}</span>
+              <Link
+                href={`/user/${authUser.handle}`}
+                style={{
+                  color: "#f4f1ea",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "3px",
+                }}
+              >
+                Profile
+              </Link>
               <span style={{ color: "#444" }}>·</span>
               <Link
                 href="/settings"
