@@ -13,25 +13,41 @@ type FeedScope = "all" | "following";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
 
-type FeedItem = {
-  reviewId: string;
-  userHandle: string;
-  userName: string | null;
-  userAvatarUrl: string | null;
-  ratingOverall: number;
-  reviewTextRaw: string;
-  publishedAt: string;
-  likeCount: number;
-  liked: boolean;
-  show: {
-    id: string;
-    localDate: string;
-    artistId: string;
-    artist: string;
-    venue: string;
-    city: string;
-  };
+type FeedShow = {
+  id: string;
+  localDate: string;
+  artistId: string;
+  artist: string;
+  venue: string;
+  city: string;
 };
+
+// Discriminated union: review entries are the full card; attendance
+// entries are lighter activity rows that only appear on the Following
+// tab when the user has attended but not reviewed.
+type FeedItem =
+  | {
+      type: "review";
+      reviewId: string;
+      userHandle: string;
+      userName: string | null;
+      userAvatarUrl: string | null;
+      ratingOverall: number;
+      reviewTextRaw: string;
+      publishedAt: string;
+      likeCount: number;
+      liked: boolean;
+      show: FeedShow;
+    }
+  | {
+      type: "attendance";
+      attendanceId: string;
+      userHandle: string;
+      userName: string | null;
+      userAvatarUrl: string | null;
+      attendedAt: string;
+      show: FeedShow;
+    };
 
 export default function Home() {
   const router = useRouter();
@@ -325,88 +341,191 @@ export default function Home() {
           </div>
         )}
 
-        {feed.map((item) => (
-          <div
-            key={item.reviewId}
-            style={{
-              padding: "28px 0",
-              borderBottom: "1px solid #1f1f1f",
-              position: "relative",
-            }}
-          >
-            {/* Overlay link covers the whole card; inner @user link and
-                ♥ button re-enable pointer events to stay clickable. */}
-            <Link
-              href={`/show/${item.show.id}`}
-              aria-label={`View show: ${item.show.artist} at ${item.show.venue}`}
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 0,
-              }}
-            />
+        {feed.map((item) =>
+          item.type === "review" ? (
             <div
+              key={`r:${item.reviewId}`}
               style={{
+                padding: "28px 0",
+                borderBottom: "1px solid #1f1f1f",
                 position: "relative",
-                zIndex: 1,
-                pointerEvents: "none",
-                display: "flex",
-                gap: "12px",
+              }}
+            >
+              {/* Overlay link covers the whole card; inner @user link and
+                  ♥ button re-enable pointer events to stay clickable. */}
+              <Link
+                href={`/show/${item.show.id}`}
+                aria-label={`View show: ${item.show.artist} at ${item.show.venue}`}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 0,
+                }}
+              />
+              <div
+                style={{
+                  position: "relative",
+                  zIndex: 1,
+                  pointerEvents: "none",
+                  display: "flex",
+                  gap: "12px",
+                }}
+              >
+                <Link
+                  href={`/user/${item.userHandle}`}
+                  aria-label={`View @${item.userHandle}`}
+                  style={{
+                    pointerEvents: "auto",
+                    position: "relative",
+                    flexShrink: 0,
+                    textDecoration: "none",
+                  }}
+                >
+                  <Avatar
+                    handle={item.userHandle}
+                    name={item.userName}
+                    avatarUrl={item.userAvatarUrl}
+                    size={36}
+                  />
+                </Link>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "15px" }}>
+                    {item.userName && (
+                      <span
+                        style={{ color: "white", fontWeight: "bold" }}
+                      >
+                        {item.userName}{" "}
+                      </span>
+                    )}
+                    <Link
+                      href={`/user/${item.userHandle}`}
+                      style={{
+                        color: "#f4f1ea",
+                        textDecoration: "underline",
+                        textUnderlineOffset: "3px",
+                        fontWeight: item.userName ? "normal" : "bold",
+                        pointerEvents: "auto",
+                        position: "relative",
+                      }}
+                    >
+                      @{item.userHandle}
+                    </Link>
+                    <span style={{ color: "#aaa" }}> reviewed </span>
+                    <span style={{ color: "white", fontWeight: "bold" }}>
+                      {item.show.artist}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      color: "#aaa",
+                      fontSize: "14px",
+                      marginTop: "4px",
+                    }}
+                  >
+                    {item.show.venue}
+                    <span style={{ color: "#555", margin: "0 6px" }}>·</span>
+                    {new Date(item.show.localDate).toLocaleDateString(
+                      undefined,
+                      {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      },
+                    )}
+                  </div>
+                  <div style={{ marginTop: "8px" }}>
+                    <StarRating rating={item.ratingOverall} />
+                  </div>
+                  {item.reviewTextRaw.trim().length > 0 && (
+                    <div style={{ marginTop: "10px" }}>
+                      {item.reviewTextRaw}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      pointerEvents: "auto",
+                      position: "relative",
+                      display: "inline-block",
+                    }}
+                  >
+                    <LikeButton
+                      reviewId={item.reviewId}
+                      initialLiked={item.liked}
+                      initialLikeCount={item.likeCount}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            // Attendance-only row — lighter than a review card.
+            // Whole-row overlay link to the show. No stars, body, or
+            // like button (there's no review to react to).
+            <div
+              key={`a:${item.attendanceId}`}
+              style={{
+                padding: "16px 0",
+                borderBottom: "1px solid #1f1f1f",
+                position: "relative",
               }}
             >
               <Link
-                href={`/user/${item.userHandle}`}
-                aria-label={`View @${item.userHandle}`}
+                href={`/show/${item.show.id}`}
+                aria-label={`View show: ${item.show.artist} at ${item.show.venue}`}
                 style={{
-                  pointerEvents: "auto",
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 0,
+                }}
+              />
+              <div
+                style={{
                   position: "relative",
-                  flexShrink: 0,
-                  textDecoration: "none",
+                  zIndex: 1,
+                  pointerEvents: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  color: "#888",
+                  fontSize: "13px",
                 }}
               >
-                <Avatar
-                  handle={item.userHandle}
-                  name={item.userName}
-                  avatarUrl={item.userAvatarUrl}
-                  size={36}
-                />
-              </Link>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "15px" }}>
-                  {item.userName && (
-                    <span
-                      style={{ color: "white", fontWeight: "bold" }}
-                    >
-                      {item.userName}{" "}
-                    </span>
-                  )}
+                <Link
+                  href={`/user/${item.userHandle}`}
+                  aria-label={`View @${item.userHandle}`}
+                  style={{
+                    pointerEvents: "auto",
+                    position: "relative",
+                    flexShrink: 0,
+                    textDecoration: "none",
+                  }}
+                >
+                  <Avatar
+                    handle={item.userHandle}
+                    name={item.userName}
+                    avatarUrl={item.userAvatarUrl}
+                    size={28}
+                  />
+                </Link>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <Link
                     href={`/user/${item.userHandle}`}
                     style={{
-                      color: "#f4f1ea",
+                      color: "#aaa",
                       textDecoration: "underline",
                       textUnderlineOffset: "3px",
-                      fontWeight: item.userName ? "normal" : "bold",
                       pointerEvents: "auto",
                       position: "relative",
                     }}
                   >
                     @{item.userHandle}
                   </Link>
-                  <span style={{ color: "#aaa" }}> reviewed </span>
-                  <span style={{ color: "white", fontWeight: "bold" }}>
-                    {item.show.artist}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    color: "#aaa",
-                    fontSize: "14px",
-                    marginTop: "4px",
-                  }}
-                >
-                  {item.show.venue}
-                  <span style={{ color: "#555", margin: "0 6px" }}>·</span>
+                  <span> attended </span>
+                  <span style={{ color: "#bbb" }}>{item.show.artist}</span>
+                  <span> at </span>
+                  <span style={{ color: "#bbb" }}>{item.show.venue}</span>
+                  <span style={{ color: "#444", margin: "0 6px" }}>·</span>
                   {new Date(item.show.localDate).toLocaleDateString(
                     undefined,
                     {
@@ -416,30 +535,10 @@ export default function Home() {
                     },
                   )}
                 </div>
-                <div style={{ marginTop: "8px" }}>
-                  <StarRating rating={item.ratingOverall} />
-                </div>
-                <div style={{ marginTop: "10px" }}>
-                  {item.reviewTextRaw}
-                </div>
-                <div
-                  style={{
-                    marginTop: "12px",
-                    pointerEvents: "auto",
-                    position: "relative",
-                    display: "inline-block",
-                  }}
-                >
-                  <LikeButton
-                    reviewId={item.reviewId}
-                    initialLiked={item.liked}
-                    initialLikeCount={item.likeCount}
-                  />
-                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ),
+        )}
       </div>
     </main>
   );

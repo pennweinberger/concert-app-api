@@ -133,25 +133,20 @@ export default function NewReviewPage() {
     }
   }
 
-  async function submitReview() {
+  async function submit() {
     if (!selectedShow) return;
-    if (rating < 1 || rating > 5) {
-      setError("Pick a rating from 1 to 5 stars.");
-      return;
-    }
-    if (!reviewText.trim()) {
-      setError("Write something about the show.");
-      return;
-    }
+
+    // Branch on whether the user gave a rating:
+    //   rating > 0  -> POST /reviews (text optional; empty is fine)
+    //   rating == 0 -> POST /shows/:id/attend (text discarded)
+    const wantsReview = rating > 0;
 
     setSubmitting(true);
     setError(null);
 
     try {
-      // Step 1: get a showId. If we were pre-filled from a show page
-      // (preloadedShowId set), skip /shows/confirm entirely — we already
-      // know the row exists. Otherwise call confirm as before; it's
-      // idempotent.
+      // Step 1: resolve a showId. Preloaded -> use directly. Otherwise
+      // call the idempotent /shows/confirm to create-or-fetch.
       let showId: string;
       if (preloadedShowId) {
         showId = preloadedShowId;
@@ -183,7 +178,6 @@ export default function NewReviewPage() {
         showId = sid;
       }
 
-      // Step 2: post the review (authed)
       const token = getToken();
       if (!token) {
         const here = "/review/new" + window.location.search;
@@ -191,28 +185,38 @@ export default function NewReviewPage() {
         return;
       }
 
-      const reviewRes = await fetch(`${API_BASE}/reviews`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          showId,
-          ratingOverall: rating,
-          reviewTextRaw: reviewText.trim(),
-        }),
-      });
+      // Step 2: post — either a review (with optional text) or just
+      // attendance.
+      const res = wantsReview
+        ? await fetch(`${API_BASE}/reviews`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              showId,
+              ratingOverall: rating,
+              reviewTextRaw: reviewText.trim(),
+            }),
+          })
+        : await fetch(`${API_BASE}/shows/${showId}/attend`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
-      if (reviewRes.status === 401) {
-        // Token expired or invalid — bounce to sign in
+      if (res.status === 401) {
         const here = "/review/new" + window.location.search;
         router.replace(`/signin?next=${encodeURIComponent(here)}`);
         return;
       }
 
-      if (!reviewRes.ok) {
-        setError(`Could not post review (HTTP ${reviewRes.status}).`);
+      if (!res.ok) {
+        setError(
+          wantsReview
+            ? `Could not post review (HTTP ${res.status}).`
+            : `Could not mark attendance (HTTP ${res.status}).`,
+        );
         setSubmitting(false);
         return;
       }
@@ -478,8 +482,21 @@ export default function NewReviewPage() {
               </div>
             )}
 
+            {rating === 0 && reviewText.trim().length > 0 && (
+              <div
+                style={{
+                  color: "#888",
+                  fontSize: "12px",
+                  marginBottom: "10px",
+                  textAlign: "center",
+                }}
+              >
+                No rating selected — your text won&rsquo;t be saved.
+              </div>
+            )}
+
             <button
-              onClick={submitReview}
+              onClick={submit}
               disabled={submitting}
               style={{
                 width: "100%",
@@ -492,7 +509,11 @@ export default function NewReviewPage() {
                 fontWeight: "bold",
               }}
             >
-              {submitting ? "Posting…" : "Post Review"}
+              {submitting
+                ? "Posting…"
+                : rating > 0
+                  ? "Post Review"
+                  : "Mark as Attended"}
             </button>
           </>
         )}

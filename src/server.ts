@@ -317,16 +317,30 @@ app.post("/reviews", async (request, reply) => {
   const { userId } = request.user;
 
   const body = request.body as {
-    showId: string;
-    ratingOverall: number;
-    reviewTextRaw: string;
+    showId?: unknown;
+    ratingOverall?: unknown;
+    reviewTextRaw?: unknown;
   };
 
-  const { showId, ratingOverall, reviewTextRaw } = body;
+  const showId = typeof body.showId === "string" ? body.showId : "";
+  const ratingOverall = body.ratingOverall;
+  // reviewTextRaw is optional now: a star-rating-only review is allowed
+  // (the feed will render the card without a body section). Empty
+  // string is the canonical "no text" value at the DB layer.
+  const reviewTextRaw =
+    typeof body.reviewTextRaw === "string" ? body.reviewTextRaw.trim() : "";
 
-  if (!showId || !ratingOverall || !reviewTextRaw) {
+  if (!showId) {
+    return reply.status(400).send({ error: "showId is required" });
+  }
+  if (
+    typeof ratingOverall !== "number" ||
+    !Number.isInteger(ratingOverall) ||
+    ratingOverall < 1 ||
+    ratingOverall > 5
+  ) {
     return reply.status(400).send({
-      error: "showId, ratingOverall, and reviewTextRaw are required",
+      error: "ratingOverall must be an integer 1-5",
     });
   }
 
@@ -398,14 +412,12 @@ app.patch("/reviews/:id", async (request, reply) => {
   }
 
   if (body.reviewTextRaw !== undefined) {
-    if (
-      typeof body.reviewTextRaw !== "string" ||
-      body.reviewTextRaw.trim().length === 0
-    ) {
+    if (typeof body.reviewTextRaw !== "string") {
       return reply
         .status(400)
-        .send({ error: "reviewTextRaw must be non-empty" });
+        .send({ error: "reviewTextRaw must be a string" });
     }
+    // Empty text is allowed — a rating-only review is valid.
     updates.reviewTextRaw = body.reviewTextRaw.trim();
   }
 
@@ -572,7 +584,8 @@ app.get("/feed", async (request, reply) => {
       },
     });
 
-    const items = reviews.map((review) => ({
+    const reviewItems = reviews.map((review) => ({
+      type: "review" as const,
       reviewId: review.id,
       userHandle: review.user.handle,
       userName: review.user.name,
@@ -593,6 +606,64 @@ app.get("/feed", async (request, reply) => {
         city: review.show.venue.city,
       },
     }));
+
+    // All-tab semantics: reviews only.
+    if (!followingScope) {
+      return { items: reviewItems };
+    }
+
+    // Following-tab semantics: reviews PLUS attendance-only activity
+    // from followed users. Dedupe — if the same (userId, showId) pair
+    // has both a review AND an attendance, only the review appears.
+    const reviewedPairs = new Set(
+      reviews.map((r) => `${r.userId}|${r.showId}`),
+    );
+
+    const attendances = await prisma.attendance.findMany({
+      where: { userId: { in: followingIds ?? [] } },
+      orderBy: { attendedAt: "desc" },
+      include: {
+        user: true,
+        show: {
+          include: {
+            artist: true,
+            venue: true,
+          },
+        },
+      },
+    });
+
+    const attendanceItems = attendances
+      .filter((a) => !reviewedPairs.has(`${a.userId}|${a.showId}`))
+      .map((a) => ({
+        type: "attendance" as const,
+        attendanceId: a.id,
+        userHandle: a.user.handle,
+        userName: a.user.name,
+        userAvatarUrl: a.user.avatarUrl,
+        attendedAt: a.attendedAt,
+        show: {
+          id: a.show.id,
+          localDate: a.show.localDate,
+          artistId: a.show.artist.id,
+          artist: a.show.artist.name,
+          venue: a.show.venue.name,
+          city: a.show.venue.city,
+        },
+      }));
+
+    // Sort the combined feed by event timestamp (publishedAt for
+    // reviews, attendedAt for attendance), most recent first.
+    const ts = (item: (typeof reviewItems)[number] | (typeof attendanceItems)[number]) =>
+      item.type === "review"
+        ? item.publishedAt
+          ? new Date(item.publishedAt).getTime()
+          : 0
+        : new Date(item.attendedAt).getTime();
+
+    const items = [...reviewItems, ...attendanceItems].sort(
+      (a, b) => ts(b) - ts(a),
+    );
 
     return { items };
   } catch (err: any) {
