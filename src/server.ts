@@ -1,7 +1,6 @@
-import Fastify, { type FastifyRequest } from "fastify";
+import Fastify, { type FastifyRequest, type FastifyReply } from "fastify";
 import cors from "@fastify/cors";
 import fastifyJwt from "@fastify/jwt";
-import rateLimit from "@fastify/rate-limit";
 import * as Sentry from "@sentry/node";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
@@ -49,20 +48,65 @@ app.register(cors, {
 
 app.register(fastifyJwt, { secret: JWT_SECRET });
 
-// TEMPORARY: in-memory rate limit store. Each Vercel function instance
-// has its own store, so the effective limit is (instances * limit). For
-// real production launch this should be replaced with a Redis/Upstash
-// backend so limits are global across instances. See follow-up list.
+// --- Rate limiting ---------------------------------------------------------
 //
-// Registered globally with a permissive default; tight per-route limits
-// are attached via config.rateLimit at the route definition site below
-// and override the global default. (With global:false in v9, route
-// configs were not being applied — hooks never registered.)
-app.register(rateLimit, {
-  global: true,
-  max: 300,
-  timeWindow: "1 minute",
-});
+// TEMPORARY: in-memory IP-based rate limiter. Each Vercel function instance
+// has its own Map, so the effective limit is (instances * limit). For real
+// production launch this should be replaced with a Redis/Upstash backend
+// so limits are global across instances. See follow-up list.
+//
+// We had been using @fastify/rate-limit (v9 with Fastify 4), but its
+// per-route config wasn't being applied on Vercel for reasons we couldn't
+// pin down — no x-ratelimit-* headers, no 429s under burst. Replaced with
+// this inline implementation since the surface area is small and the
+// semantics we want (per-IP, fixed window, attach as preHandler) are
+// trivial to write directly.
+type RateBucket = { count: number; resetAt: number };
+const rateBuckets = new Map<string, RateBucket>();
+const MAX_RATE_BUCKETS = 10_000;
+
+function makeRateLimit(name: string, max: number, windowMs: number) {
+  return async function rateLimitHook(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) {
+    const ip = request.ip || "unknown";
+    const key = `${name}:${ip}`;
+    const now = Date.now();
+    const bucket = rateBuckets.get(key);
+
+    if (!bucket || bucket.resetAt < now) {
+      // First request in a new window — initialize bucket.
+      if (rateBuckets.size >= MAX_RATE_BUCKETS) {
+        // Hard cap so a flood of unique IPs can't OOM the function. Drop
+        // the entire map; next request from each IP starts a fresh window.
+        rateBuckets.clear();
+      }
+      rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+      reply.header("X-RateLimit-Limit", String(max));
+      reply.header("X-RateLimit-Remaining", String(max - 1));
+      return;
+    }
+
+    bucket.count++;
+    const remaining = Math.max(0, max - bucket.count);
+    reply.header("X-RateLimit-Limit", String(max));
+    reply.header("X-RateLimit-Remaining", String(remaining));
+
+    if (bucket.count > max) {
+      const retryAfterSec = Math.ceil((bucket.resetAt - now) / 1000);
+      reply.header("Retry-After", String(retryAfterSec));
+      return reply.status(429).send({
+        error: "Too many requests. Try again shortly.",
+      });
+    }
+  };
+}
+
+// Tight limits on abuse-prone endpoints.
+const rateLimitLogin = makeRateLimit("login", 5, 60_000); // 5 / min / IP
+const rateLimitRegister = makeRateLimit("register", 3, 60 * 60_000); // 3 / hour / IP
+const rateLimitSearch = makeRateLimit("search", 60, 60_000); // 60 / min / IP
 
 // Catch unhandled errors and forward to Sentry (no-op if Sentry not
 // initialized). Falls through to Fastify's default error response.
@@ -152,11 +196,7 @@ app.get("/health", async () => {
 
 app.post(
   "/auth/register",
-  {
-    config: {
-      rateLimit: { max: 3, timeWindow: "1 hour" },
-    },
-  },
+  { preHandler: rateLimitRegister },
   async (request, reply) => {
   const body = request.body as { handle?: unknown; password?: unknown };
 
@@ -204,11 +244,7 @@ app.post(
 
 app.post(
   "/auth/login",
-  {
-    config: {
-      rateLimit: { max: 5, timeWindow: "1 minute" },
-    },
-  },
+  { preHandler: rateLimitLogin },
   async (request, reply) => {
   const body = request.body as { handle?: unknown; password?: unknown };
 
@@ -251,11 +287,7 @@ app.get("/auth/me", async (request, reply) => {
 
 app.get(
   "/artists/search",
-  {
-    config: {
-      rateLimit: { max: 60, timeWindow: "1 minute" },
-    },
-  },
+  { preHandler: rateLimitSearch },
   async (request, reply) => {
   const { q } = request.query as { q?: string };
 
@@ -287,11 +319,7 @@ app.get(
 
 app.get(
   "/shows/search",
-  {
-    config: {
-      rateLimit: { max: 60, timeWindow: "1 minute" },
-    },
-  },
+  { preHandler: rateLimitSearch },
   async (request, reply) => {
   const { q } = request.query as { q?: string };
 
