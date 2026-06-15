@@ -27,9 +27,6 @@ model User {
   reviewLikes  ReviewLike[]
   attendances  Attendance[]
 
-  // Self-referencing follow graph. `following` = Follow rows where
-  // this user is the follower (i.e. users they follow). `followers`
-  // = Follow rows where this user is being followed.
   following    Follow[]     @relation("UserFollowing")
   followers    Follow[]     @relation("UserFollowers")
 }
@@ -48,14 +45,16 @@ model Follow {
 }
 
 model Artist {
-  id               String   @id @default(cuid())
-  name             String
-  ticketmasterId   String?  @unique
-  mbid             String?
-  mbidConfidence   Float?
-  lastMbidLookupAt DateTime?
+  id                   String   @id @default(cuid())
+  name                 String
+  ticketmasterId       String?  @unique
+  mbid                 String?
+  mbidConfidence       Float?
+  lastMbidLookupAt     DateTime?
+  lastSetlistfmFetchAt DateTime?
 
-  shows            Show[]
+  shows                Show[]
+  providerMatchReviews ProviderMatchReview[]
 }
 
 model Venue {
@@ -66,7 +65,23 @@ model Venue {
   timezone  String?
   createdAt DateTime @default(now())
 
-  shows     Show[]
+  shows                Show[]
+  externalRefs         VenueExternalRef[]
+  providerMatchReviews ProviderMatchReview[]
+}
+
+model VenueExternalRef {
+  id              String @id @default(cuid())
+  venueId         String
+  provider        String
+  providerVenueId String
+  rawPayload      Json?
+  createdAt       DateTime @default(now())
+
+  venue           Venue @relation(fields: [venueId], references: [id])
+
+  @@unique([provider, providerVenueId])
+  @@index([venueId])
 }
 
 model Show {
@@ -164,8 +179,28 @@ model SetlistCache {
   status    String
   setlist   Json?
   fetchedAt DateTime?
+  sourceUrl String?
 
   show      Show @relation(fields: [showId], references: [id])
 }
 
+model ProviderMatchReview {
+  id                String   @id @default(cuid())
+  provider          String
+  providerEventId   String
+  rawPayload        Json
+  candidateShowIds  String[]
+  resolvedArtistId  String?
+  resolvedVenueId   String?
+  reason            String
+  status            String   @default("pending")
+  createdAt         DateTime @default(now())
+  reviewedAt        DateTime?
+  reviewedBy        String?
 
+  resolvedArtist    Artist?  @relation(fields: [resolvedArtistId], references: [id])
+  resolvedVenue     Venue?   @relation(fields: [resolvedVenueId], references: [id])
+
+  @@unique([provider, providerEventId])
+  @@index([status, createdAt])
+}
