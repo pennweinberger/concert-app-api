@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/node";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
+import { registerInternalRoutes } from "./routes/internal.js";
 
 dotenv.config();
 
@@ -1385,6 +1386,8 @@ app.delete("/users/:handle/follow", async (request, reply) => {
     });
   }
 });
+
+registerInternalRoutes(app, prisma);
 
 const start = async () => {
   try {
