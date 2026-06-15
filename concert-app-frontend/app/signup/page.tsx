@@ -14,6 +14,7 @@ function SignUpForm() {
   const next = searchParams.get("next") || "/";
 
   const [handle, setHandle] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +23,11 @@ function SignUpForm() {
     const cleanedHandle = handle.trim().replace(/^@/, "");
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(cleanedHandle)) {
       setError("Handle must be 3-20 chars: letters, numbers, underscore.");
+      return;
+    }
+    const cleanedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanedEmail)) {
+      setError("Enter a valid email address.");
       return;
     }
     if (password.length < 8) {
@@ -37,6 +43,7 @@ function SignUpForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           handle: cleanedHandle,
+          email: cleanedEmail,
           password,
         }),
       });
@@ -44,9 +51,14 @@ function SignUpForm() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         if (res.status === 409) {
-          setError(
-            "That handle is already taken. If it's yours, sign in instead.",
-          );
+          const msg = (data?.error as string | undefined) ?? "";
+          if (msg.toLowerCase().includes("email")) {
+            setError("That email is already in use. Sign in instead?");
+          } else {
+            setError(
+              "That handle is already taken. If it's yours, sign in instead.",
+            );
+          }
         } else {
           setError(
             data?.error || "Sign up failed. Try again in a moment.",
@@ -116,6 +128,41 @@ function SignUpForm() {
         />
         <div style={{ color: "#777", fontSize: "12px", marginTop: "6px" }}>
           3-20 chars: letters, numbers, underscore.
+        </div>
+      </div>
+
+      <div style={{ marginBottom: "14px" }}>
+        <label
+          style={{
+            display: "block",
+            color: "#aaa",
+            marginBottom: "6px",
+            fontSize: "14px",
+          }}
+        >
+          Email
+        </label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          placeholder="you@example.com"
+          autoComplete="email"
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: "12px",
+            border: "1px solid #333",
+            background: "#1a1a1a",
+            color: "white",
+            boxSizing: "border-box",
+          }}
+        />
+        <div style={{ color: "#777", fontSize: "12px", marginTop: "6px" }}>
+          We send a verification link. Used for password reset later.
         </div>
       </div>
 

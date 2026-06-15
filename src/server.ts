@@ -6,6 +6,12 @@ import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { registerInternalRoutes } from "./routes/internal.js";
+import { sendVerificationEmail } from "./lib/email.js";
+import {
+  generateTokenString,
+  tokenExpiresAt,
+  checkToken,
+} from "./lib/tokens.js";
 
 dotenv.config();
 
@@ -108,6 +114,8 @@ function makeRateLimit(name: string, max: number, windowMs: number) {
 const rateLimitLogin = makeRateLimit("login", 5, 60_000); // 5 / min / IP
 const rateLimitRegister = makeRateLimit("register", 3, 60 * 60_000); // 3 / hour / IP
 const rateLimitSearch = makeRateLimit("search", 60, 60_000); // 60 / min / IP
+const rateLimitVerifyEmail = makeRateLimit("verify-email", 20, 60_000); // 20 / min / IP — generous for legitimate retries
+const rateLimitResendVerification = makeRateLimit("resend-verification", 3, 60 * 60_000); // 3 / hour / IP
 
 // Catch unhandled errors and forward to Sentry (no-op if Sentry not
 // initialized). Falls through to Fastify's default error response.
@@ -130,6 +138,17 @@ function normalizeHandle(raw: unknown): string | null {
 
 function validPassword(raw: unknown): raw is string {
   return typeof raw === "string" && raw.length >= 8 && raw.length <= 200;
+}
+
+// Permissive enough to catch typos without rejecting legitimate
+// addresses (gmail+tag, country TLDs, etc.). Real deliverability is
+// confirmed by the verification email itself.
+function normalizeEmail(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed.length < 3 || trimmed.length > 254) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return null;
+  return trimmed;
 }
 
 // Reads the Authorization header and returns the userId if a valid JWT is
@@ -199,7 +218,11 @@ app.post(
   "/auth/register",
   { preHandler: rateLimitRegister },
   async (request, reply) => {
-  const body = request.body as { handle?: unknown; password?: unknown };
+  const body = request.body as {
+    handle?: unknown;
+    email?: unknown;
+    password?: unknown;
+  };
 
   const handle = normalizeHandle(body.handle);
   if (!handle) {
@@ -207,23 +230,56 @@ app.post(
       error: "Handle must be 3-20 chars, letters/numbers/underscore only",
     });
   }
+  const email = normalizeEmail(body.email);
+  if (!email) {
+    return reply.status(400).send({ error: "Valid email is required" });
+  }
   if (!validPassword(body.password)) {
     return reply.status(400).send({
       error: "Password must be at least 8 characters",
     });
   }
 
-  const existing = await prisma.user.findUnique({ where: { handle } });
-  if (existing) {
+  const existingHandle = await prisma.user.findUnique({ where: { handle } });
+  if (existingHandle) {
     return reply.status(409).send({ error: "Handle already taken" });
+  }
+  const existingEmail = await prisma.user.findUnique({ where: { email } });
+  if (existingEmail) {
+    return reply.status(409).send({ error: "Email already in use" });
   }
 
   const passwordHash = await bcrypt.hash(body.password, 10);
 
   try {
     const user = await prisma.user.create({
-      data: { handle, passwordHash },
+      data: { handle, email, passwordHash },
     });
+
+    // Create verification token and send the email. We deliberately do
+    // not block registration on email send failure — the user can hit
+    // /auth/resend-verification later. Email service downtime should
+    // not prevent signup.
+    const now = new Date();
+    const verificationToken = await prisma.verificationToken.create({
+      data: {
+        userId: user.id,
+        type: "email_verify",
+        token: generateTokenString(),
+        expiresAt: tokenExpiresAt("email_verify", now),
+      },
+    });
+    const emailResult = await sendVerificationEmail({
+      to: email,
+      handle: user.handle,
+      token: verificationToken.token,
+    });
+    if (!emailResult.sent) {
+      app.log.warn(
+        { reason: emailResult.reason, userId: user.id },
+        "verification email did not send",
+      );
+    }
 
     const token = await reply.jwtSign(
       { userId: user.id, handle: user.handle },
@@ -232,7 +288,12 @@ app.post(
 
     return reply.status(201).send({
       token,
-      user: { id: user.id, handle: user.handle },
+      user: {
+        id: user.id,
+        handle: user.handle,
+        email: user.email,
+        emailVerified: false,
+      },
     });
   } catch (err: any) {
     app.log.error(err);
@@ -271,7 +332,12 @@ app.post(
 
   return {
     token,
-    user: { id: user.id, handle: user.handle },
+    user: {
+      id: user.id,
+      handle: user.handle,
+      email: user.email,
+      emailVerified: user.emailVerifiedAt !== null,
+    },
   };
 });
 
@@ -281,8 +347,176 @@ app.get("/auth/me", async (request, reply) => {
   } catch {
     return reply.status(401).send({ error: "Not authenticated" });
   }
-  return { user: request.user };
+  const dbUser = await prisma.user.findUnique({
+    where: { id: request.user.userId },
+    select: {
+      id: true,
+      handle: true,
+      email: true,
+      emailVerifiedAt: true,
+      name: true,
+      avatarUrl: true,
+    },
+  });
+  if (!dbUser) {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+  return {
+    user: {
+      id: dbUser.id,
+      handle: dbUser.handle,
+      email: dbUser.email,
+      emailVerified: dbUser.emailVerifiedAt !== null,
+      name: dbUser.name,
+      avatarUrl: dbUser.avatarUrl,
+    },
+  };
 });
+
+// Public — validates the token and marks the user verified. Idempotent:
+// repeat clicks on the same link (e.g. opening it twice) return 200 as
+// long as the user is already verified.
+app.post(
+  "/auth/verify-email/:token",
+  { preHandler: rateLimitVerifyEmail },
+  async (request, reply) => {
+    const { token } = request.params as { token?: string };
+    if (!token || typeof token !== "string" || token.length === 0) {
+      return reply.status(400).send({ error: "Token required" });
+    }
+
+    const record = await prisma.verificationToken.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+
+    const validity = checkToken({
+      record: record
+        ? {
+            type: record.type,
+            expiresAt: record.expiresAt,
+            consumedAt: record.consumedAt,
+          }
+        : null,
+      expectedType: "email_verify",
+      now: new Date(),
+    });
+
+    if (!validity.ok) {
+      // If the token is consumed AND the user is already verified, return
+      // 200 — the user double-clicked. Anything else: 400.
+      if (
+        validity.reason === "consumed" &&
+        record?.user.emailVerifiedAt
+      ) {
+        return {
+          verified: true,
+          email: record.user.email,
+        };
+      }
+      return reply.status(400).send({
+        error: "Invalid or expired verification link",
+        reason: validity.reason,
+      });
+    }
+
+    if (!record) {
+      // Defensive: validity.ok already implies record is non-null.
+      return reply.status(400).send({ error: "Invalid token" });
+    }
+
+    const now = new Date();
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: record.userId },
+        data: { emailVerifiedAt: now },
+      }),
+      prisma.verificationToken.update({
+        where: { id: record.id },
+        data: { consumedAt: now },
+      }),
+    ]);
+
+    return {
+      verified: true,
+      email: record.user.email,
+    };
+  },
+);
+
+// Authenticated — invalidates prior email_verify tokens for the user,
+// issues a new one, sends the email. No-ops gracefully if already
+// verified.
+app.post(
+  "/auth/resend-verification",
+  { preHandler: rateLimitResendVerification },
+  async (request, reply) => {
+    try {
+      await request.jwtVerify();
+    } catch {
+      return reply.status(401).send({ error: "Not authenticated" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: request.user.userId },
+    });
+    if (!user) {
+      return reply.status(401).send({ error: "Not authenticated" });
+    }
+    if (!user.email) {
+      return reply
+        .status(400)
+        .send({ error: "No email on account" });
+    }
+    if (user.emailVerifiedAt) {
+      return reply.status(400).send({ error: "Email already verified" });
+    }
+
+    const now = new Date();
+    // Invalidate prior un-consumed email_verify tokens so the old
+    // links stop working.
+    await prisma.verificationToken.updateMany({
+      where: {
+        userId: user.id,
+        type: "email_verify",
+        consumedAt: null,
+      },
+      data: { consumedAt: now },
+    });
+
+    const verificationToken = await prisma.verificationToken.create({
+      data: {
+        userId: user.id,
+        type: "email_verify",
+        token: generateTokenString(),
+        expiresAt: tokenExpiresAt("email_verify", now),
+      },
+    });
+
+    const result = await sendVerificationEmail({
+      to: user.email,
+      handle: user.handle,
+      token: verificationToken.token,
+    });
+
+    if (!result.sent) {
+      app.log.warn(
+        { reason: result.reason, userId: user.id },
+        "resend verification did not deliver",
+      );
+      if (result.reason === "not_configured") {
+        return reply
+          .status(503)
+          .send({ error: "Email is not configured on the server yet" });
+      }
+      return reply
+        .status(502)
+        .send({ error: "Failed to send verification email" });
+    }
+
+    return { sent: true };
+  },
+);
 
 // --- End auth --------------------------------------------------------------
 

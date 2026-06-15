@@ -10,6 +10,8 @@ import { useSyncExternalStore } from "react";
 export type AuthUser = {
   id: string;
   handle: string;
+  email?: string | null;
+  emailVerified?: boolean;
 };
 
 const TOKEN_KEY = "afterset_token";
@@ -52,6 +54,33 @@ export function clearSession(): void {
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
   window.dispatchEvent(new Event(AUTH_EVENT));
+}
+
+// Pulls the current user state from /auth/me and updates the cached
+// user. Used by components that depend on freshly-loaded fields like
+// emailVerified (which is not present on the JWT itself). No-op when
+// not signed in or when the fetch fails — callers fall back to the
+// cached value.
+export async function refreshUser(apiBase: string): Promise<AuthUser | null> {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${apiBase}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const next: AuthUser = {
+      id: data.user.id,
+      handle: data.user.handle,
+      email: data.user.email ?? null,
+      emailVerified: !!data.user.emailVerified,
+    };
+    setSession(token, next);
+    return next;
+  } catch {
+    return null;
+  }
 }
 
 // ---- useAuthUser via useSyncExternalStore -------------------------------
