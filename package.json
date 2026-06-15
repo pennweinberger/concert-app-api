@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate",
+    "build": "prisma migrate deploy && prisma generate",
     "postinstall": "prisma generate"
   },
   "dependencies": {
