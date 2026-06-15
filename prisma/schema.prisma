@@ -16,19 +16,37 @@ enum ModerationStatus {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  handle       String   @unique
-  passwordHash String?
-  name         String?
-  avatarUrl    String?
-  createdAt    DateTime @default(now())
+  id              String   @id @default(cuid())
+  handle          String   @unique
+  email           String?  @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String?
+  name            String?
+  avatarUrl       String?
+  createdAt       DateTime @default(now())
 
-  reviews      Review[]
-  reviewLikes  ReviewLike[]
-  attendances  Attendance[]
+  reviews            Review[]
+  reviewLikes        ReviewLike[]
+  attendances        Attendance[]
+  verificationTokens VerificationToken[]
 
-  following    Follow[]     @relation("UserFollowing")
-  followers    Follow[]     @relation("UserFollowers")
+  following Follow[] @relation("UserFollowing")
+  followers Follow[] @relation("UserFollowers")
+}
+
+model VerificationToken {
+  id          String    @id @default(cuid())
+  userId      String
+  type        String                       // "email_verify" | "password_reset"
+  token       String    @unique
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([expiresAt])
 }
 
 model Follow {
