@@ -8,6 +8,7 @@ import { isDeletedHandle, DELETED_USER_LABEL } from "./lib/displayUser";
 import LikeButton from "./components/LikeButton";
 import StarRating from "./components/StarRating";
 import Avatar from "./components/Avatar";
+import ShowSearch from "./components/ShowSearch";
 
 type FeedScope = "all" | "following";
 
@@ -240,6 +241,8 @@ export default function Home() {
         >
           + Write a Review
         </Link>
+
+        <ShowSearch />
 
         <div
           style={{

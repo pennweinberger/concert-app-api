@@ -25,6 +25,11 @@ import {
   MAX_COMMENTS_LIMIT,
 } from "./lib/comments.js";
 import {
+  searchShows,
+  DEFAULT_SHOW_SEARCH_LIMIT,
+  MAX_SHOW_SEARCH_LIMIT,
+} from "./lib/showSearch.js";
+import {
   generateTokenString,
   tokenExpiresAt,
   checkToken,
@@ -878,29 +883,28 @@ app.post("/shows/confirm", async (request, reply) => {
   try {
     const parsedDate = new Date(`${localDate}T00:00:00.000Z`);
 
-    // Artist
-    let artistRecord = await prisma.artist.findFirst({
+    // Race-safe Artist resolution via the unique index on Artist.name.
+    // Two concurrent requests for the same artist now collide on the
+    // index inside Postgres and only one row is created.
+    const artistRecord = await prisma.artist.upsert({
       where: { name: artist },
+      update: {},
+      create: { name: artist },
     });
 
-    if (!artistRecord) {
-      artistRecord = await prisma.artist.create({
-        data: { name: artist },
-      });
-    }
-
-    // Venue
-    let venueRecord = await prisma.venue.findFirst({
-      where: { name: venue, city },
+    // Race-safe Venue resolution via the unique index on (name, city).
+    const venueRecord = await prisma.venue.upsert({
+      where: { name_city: { name: venue, city } },
+      update: {},
+      create: { name: venue, city },
     });
 
-    if (!venueRecord) {
-      venueRecord = await prisma.venue.create({
-        data: { name: venue, city },
-      });
-    }
-
-    // Check existing show
+    // Show resolution: the existing @@unique([artistId, venueId,
+    // localDate]) prevents duplicate Shows once Artist+Venue are
+    // race-safe. We do a findUnique first so the response's `existing`
+    // flag stays accurate for happy-path callers; if a concurrent
+    // request races us between the findUnique and create, the create
+    // throws P2002 and we re-read.
     const existingShow = await prisma.show.findUnique({
       where: {
         artistId_venueId_localDate: {
@@ -912,26 +916,36 @@ app.post("/shows/confirm", async (request, reply) => {
     });
 
     if (existingShow) {
-      return {
-        showId: existingShow.id,
-        existing: true,
-      };
+      return { showId: existingShow.id, existing: true };
     }
 
-    // Create show
-    const showRecord = await prisma.show.create({
-      data: {
-        artistId: artistRecord.id,
-        venueId: venueRecord.id,
-        startDatetimeUtc: parsedDate,
-        localDate: parsedDate,
-      },
-    });
-
-    return {
-      showId: showRecord.id,
-      existing: false,
-    };
+    try {
+      const showRecord = await prisma.show.create({
+        data: {
+          artistId: artistRecord.id,
+          venueId: venueRecord.id,
+          startDatetimeUtc: parsedDate,
+          localDate: parsedDate,
+        },
+      });
+      return { showId: showRecord.id, existing: false };
+    } catch (createErr: any) {
+      if (createErr?.code === "P2002") {
+        const winner = await prisma.show.findUnique({
+          where: {
+            artistId_venueId_localDate: {
+              artistId: artistRecord.id,
+              venueId: venueRecord.id,
+              localDate: parsedDate,
+            },
+          },
+        });
+        if (winner) {
+          return { showId: winner.id, existing: true };
+        }
+      }
+      throw createErr;
+    }
   } catch (err: any) {
     app.log.error(err);
     return reply.status(500).send({
@@ -940,6 +954,42 @@ app.post("/shows/confirm", async (request, reply) => {
     });
   }
 });
+
+// Search our canonical Shows table. Browse-only — no external API call.
+// The frontend pairs this with /shows/search (Ticketmaster) and merges
+// the two sources into a single ranked dropdown client-side. Both
+// share rateLimitSearch.
+app.get(
+  "/shows",
+  { preHandler: rateLimitSearch },
+  async (request, reply) => {
+    const query = request.query as {
+      q?: string;
+      cursor?: string;
+      limit?: string;
+    };
+    const q = typeof query.q === "string" ? query.q : "";
+    const rawLimit = Number(query.limit);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(rawLimit, MAX_SHOW_SEARCH_LIMIT)
+        : DEFAULT_SHOW_SEARCH_LIMIT;
+    const cursor = parseCursor(query.cursor);
+
+    const result = await searchShows({ q, limit, cursor }, { prisma });
+    return reply.send({
+      items: result.items.map((s) => ({
+        id: s.id,
+        artist: s.artist,
+        venue: s.venue,
+        localDate: s.localDate,
+        reviewCount: s.reviewCount,
+        attendanceCount: s.attendanceCount,
+      })),
+      nextCursor: result.nextCursor,
+    });
+  },
+);
 
 app.post("/reviews", async (request, reply) => {
   try {
