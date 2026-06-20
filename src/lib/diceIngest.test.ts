@@ -304,6 +304,13 @@ describe("runDiceIngestion — chunking", () => {
   function makeRunSetup() {
     const findVenues = vi.fn();
     const updateVenue = vi.fn().mockResolvedValue({});
+    // upsertVenue is called by the zero-event fallback path so we can
+    // mark lastDiceFetchAt even when DICE returned no events.
+    const upsertVenueMock = vi.fn().mockImplementation(async (args: any) => ({
+      id: `venue_${args.where.name_city.name.replace(/\s+/g, "_")}`,
+      name: args.where.name_city.name,
+      city: args.where.name_city.city,
+    }));
     const fetched: string[] = [];
     const fetchVenuePageHtml = vi.fn(async (shortId: string) => {
       fetched.push(shortId);
@@ -321,11 +328,20 @@ describe("runDiceIngestion — chunking", () => {
     return {
       fetched,
       prisma: {
-        venue: { findMany: findVenues, update: updateVenue },
+        venue: {
+          findMany: findVenues,
+          update: updateVenue,
+          upsert: upsertVenueMock,
+        },
         artist: { findMany: findManyArtists },
         show: { findMany: findManyShows },
       } as unknown as import("@prisma/client").PrismaClient,
-      mocks: { findVenues, updateVenue, fetchVenuePageHtml },
+      mocks: {
+        findVenues,
+        updateVenue,
+        fetchVenuePageHtml,
+        upsertVenueMock,
+      },
     };
   }
 

@@ -208,18 +208,28 @@ export async function runDiceIngestion(
       }
     }
 
-    if (canonicalVenueId) {
-      try {
-        await deps.prisma.venue.update({
-          where: { id: canonicalVenueId },
-          data: { lastDiceFetchAt: deps.now() },
-        });
-      } catch (e) {
-        console.error(
-          `dice ingest: failed to update lastDiceFetchAt for venue=${canonicalVenueId}`,
-          e,
-        );
-      }
+    // Always mark lastDiceFetchAt even when the venue page had zero
+    // events — otherwise empty-event venues (e.g., a club between
+    // booked weekends) get re-fetched on every run forever. If the
+    // event loop never set canonicalVenueId, upsert the Venue row
+    // here so we have something to stamp.
+    if (!canonicalVenueId) {
+      const venue = await upsertVenue(
+        { name: seedVenue.canonicalName, city: seedVenue.city },
+        { prisma: deps.prisma },
+      );
+      canonicalVenueId = venue.id;
+    }
+    try {
+      await deps.prisma.venue.update({
+        where: { id: canonicalVenueId },
+        data: { lastDiceFetchAt: deps.now() },
+      });
+    } catch (e) {
+      console.error(
+        `dice ingest: failed to update lastDiceFetchAt for venue=${canonicalVenueId}`,
+        e,
+      );
     }
     summary.processedDiceVenues++;
   }
