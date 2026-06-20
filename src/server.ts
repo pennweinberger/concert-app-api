@@ -6,12 +6,16 @@ import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { registerInternalRoutes } from "./routes/internal.js";
-import { sendVerificationEmail } from "./lib/email.js";
+import { sendVerificationEmail, sendPasswordResetEmail } from "./lib/email.js";
 import {
   generateTokenString,
   tokenExpiresAt,
   checkToken,
 } from "./lib/tokens.js";
+import {
+  forgotPassword,
+  resetPassword,
+} from "./lib/passwordReset.js";
 
 dotenv.config();
 
@@ -116,6 +120,8 @@ const rateLimitRegister = makeRateLimit("register", 3, 60 * 60_000); // 3 / hour
 const rateLimitSearch = makeRateLimit("search", 60, 60_000); // 60 / min / IP
 const rateLimitVerifyEmail = makeRateLimit("verify-email", 20, 60_000); // 20 / min / IP — generous for legitimate retries
 const rateLimitResendVerification = makeRateLimit("resend-verification", 3, 60 * 60_000); // 3 / hour / IP
+const rateLimitForgotPassword = makeRateLimit("forgot-password", 3, 60 * 60_000); // 3 / hour / IP
+const rateLimitResetPassword = makeRateLimit("reset-password", 10, 60_000); // 10 / min / IP
 
 // Catch unhandled errors and forward to Sentry (no-op if Sentry not
 // initialized). Falls through to Fastify's default error response.
@@ -137,7 +143,7 @@ function normalizeHandle(raw: unknown): string | null {
 }
 
 function validPassword(raw: unknown): raw is string {
-  return typeof raw === "string" && raw.length >= 8 && raw.length <= 200;
+  return typeof raw === "string" && raw.length >= 8 && raw.length <= 128;
 }
 
 // Permissive enough to catch typos without rejecting legitimate
@@ -515,6 +521,98 @@ app.post(
     }
 
     return { sent: true };
+  },
+);
+
+// Public — initiates the password-reset flow. ALWAYS returns the same
+// 200 + message regardless of whether the email is registered, so
+// callers cannot enumerate which addresses belong to real accounts.
+const FORGOT_PUBLIC_MESSAGE =
+  "If an account exists for that email, we sent a reset link.";
+
+app.post(
+  "/auth/forgot-password",
+  { preHandler: rateLimitForgotPassword },
+  async (request, reply) => {
+    const body = request.body as { email?: unknown };
+    const email = normalizeEmail(body.email);
+
+    // Anti-enumeration: even an obviously-malformed email returns the
+    // same 200 + message so timing / status / body cannot leak.
+    if (!email) {
+      return reply.status(200).send({ message: FORGOT_PUBLIC_MESSAGE });
+    }
+
+    try {
+      await forgotPassword(
+        { email },
+        {
+          prisma,
+          sendPasswordResetEmail,
+          now: () => new Date(),
+        },
+      );
+    } catch (err: any) {
+      // Log but still return the public message — anti-enumeration
+      // trumps surfacing the error to the caller.
+      app.log.warn(
+        { err: err?.message, email: "<redacted>" },
+        "forgot-password handler threw",
+      );
+    }
+
+    return reply.status(200).send({ message: FORGOT_PUBLIC_MESSAGE });
+  },
+);
+
+// Public — consumes the token and sets the new password. The token in
+// the URL acts as the auth.
+app.post(
+  "/auth/reset-password",
+  { preHandler: rateLimitResetPassword },
+  async (request, reply) => {
+    const body = request.body as {
+      token?: unknown;
+      newPassword?: unknown;
+    };
+    if (typeof body.token !== "string" || body.token.length === 0) {
+      return reply.status(400).send({ error: "Token required" });
+    }
+    if (typeof body.newPassword !== "string") {
+      return reply.status(400).send({ error: "New password required" });
+    }
+
+    const result = await resetPassword(
+      { token: body.token, newPassword: body.newPassword },
+      { prisma, now: () => new Date() },
+    );
+
+    if (result.ok) {
+      return { ok: true };
+    }
+
+    switch (result.reason) {
+      case "weak_password":
+        return reply.status(400).send({
+          error: "Password must be 8-128 characters",
+          reason: "weak_password",
+        });
+      case "invalid_token":
+        return reply.status(400).send({
+          error: "Invalid or expired reset link",
+          reason: "invalid_token",
+        });
+      case "expired":
+        return reply.status(400).send({
+          error: "Reset link has expired",
+          reason: "expired",
+        });
+      case "consumed":
+        return reply.status(400).send({
+          error: "Reset link has already been used",
+          reason: "consumed",
+        });
+    }
   },
 );
 

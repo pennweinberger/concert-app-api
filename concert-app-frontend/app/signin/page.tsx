@@ -136,6 +136,19 @@ function SignInForm() {
             boxSizing: "border-box",
           }}
         />
+        <div style={{ textAlign: "right", marginTop: "8px" }}>
+          <Link
+            href="/forgot-password"
+            style={{
+              color: "#aaa",
+              fontSize: "13px",
+              textDecoration: "underline",
+              textUnderlineOffset: "3px",
+            }}
+          >
+            Forgot password?
+          </Link>
+        </div>
       </div>
 
       {error && (
