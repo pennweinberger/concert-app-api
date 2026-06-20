@@ -8,6 +8,8 @@ import type { PrismaClient } from "@prisma/client";
 import { runIngestion } from "../lib/setlistfmIngest.js";
 import { searchSetlistsByArtistMbid } from "../lib/setlistfm.js";
 import { cleanupAccountDeletions } from "../lib/accountLifecycle.js";
+import { runDiceIngestion } from "../lib/diceIngest.js";
+import { fetchVenuePageHtml } from "../lib/dice.js";
 
 export function registerInternalRoutes(
   app: FastifyInstance,
@@ -78,6 +80,42 @@ export function registerInternalRoutes(
         app.log.error(err);
         return reply.status(500).send({
           error: "Cleanup failed",
+          details: err?.message || String(err),
+        });
+      }
+    },
+  );
+
+  // DICE NYC ingestion. Inert unless BOTH CRON_SECRET and
+  // DICE_INGEST_ENABLED are set. The DICE client itself reads
+  // DICE_INGEST_ENABLED on every fetch (returns DiceDisabledError when
+  // missing); the route-level check below short-circuits cheaply
+  // before we even authenticate the bearer.
+  app.post(
+    "/internal/ingest/dice",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const cronSecret = process.env.CRON_SECRET;
+      const diceEnabled = process.env.DICE_INGEST_ENABLED === "true";
+      if (!cronSecret || !diceEnabled) {
+        return reply
+          .status(503)
+          .send({ error: "DICE ingestion not configured" });
+      }
+      const auth = request.headers["authorization"];
+      if (!auth || auth !== `Bearer ${cronSecret}`) {
+        return reply.status(401).send({ error: "Unauthorized" });
+      }
+      try {
+        const summary = await runDiceIngestion({
+          prisma,
+          fetchVenuePageHtml,
+          now: () => new Date(),
+        });
+        return reply.status(200).send(summary);
+      } catch (err: any) {
+        app.log.error(err);
+        return reply.status(500).send({
+          error: "DICE ingestion failed",
           details: err?.message || String(err),
         });
       }

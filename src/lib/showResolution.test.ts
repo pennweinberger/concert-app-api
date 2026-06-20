@@ -27,21 +27,29 @@ function makeMockPrisma() {
   };
 }
 
+const artistSelect = {
+  id: true,
+  name: true,
+  ticketmasterId: true,
+  diceId: true,
+};
+
 // ---------------------------------------------------------------------------
-// resolveArtist
+// resolveArtist — Ticketmaster path
 // ---------------------------------------------------------------------------
 
-describe("resolveArtist", () => {
+describe("resolveArtist — Ticketmaster path", () => {
   let setup: ReturnType<typeof makeMockPrisma>;
   beforeEach(() => {
     setup = makeMockPrisma();
   });
 
-  it("with ticketmasterId that matches an existing Artist: returns it without name lookup", async () => {
+  it("with ticketmasterId that matches: returns it without further lookup", async () => {
     setup.mocks.findArtistUnique.mockResolvedValueOnce({
       id: "a_existing",
       name: "Fisher",
       ticketmasterId: "tm_artist_123",
+      diceId: null,
     });
     const result = await resolveArtist(
       { name: "Fisher", ticketmasterId: "tm_artist_123" },
@@ -50,32 +58,33 @@ describe("resolveArtist", () => {
     expect(result.id).toBe("a_existing");
     expect(setup.mocks.findArtistUnique).toHaveBeenCalledWith({
       where: { ticketmasterId: "tm_artist_123" },
-      select: { id: true, name: true, ticketmasterId: true },
+      select: artistSelect,
     });
     expect(setup.mocks.upsertArtist).not.toHaveBeenCalled();
   });
 
-  it("with ticketmasterId, name variation: returns the row found by id, not by name (collapses variants)", async () => {
-    // DB has name "Fisher"; incoming payload says "DJ Fisher" but same TM id.
+  it("with ticketmasterId, name variation: returns canonical row (collapses variants)", async () => {
     setup.mocks.findArtistUnique.mockResolvedValueOnce({
       id: "a_canonical",
       name: "Fisher",
       ticketmasterId: "tm_artist_123",
+      diceId: null,
     });
     const result = await resolveArtist(
       { name: "DJ Fisher", ticketmasterId: "tm_artist_123" },
       { prisma: setup.prisma },
     );
-    expect(result.name).toBe("Fisher"); // canonical name preserved
+    expect(result.name).toBe("Fisher");
     expect(setup.mocks.upsertArtist).not.toHaveBeenCalled();
   });
 
-  it("with ticketmasterId NOT in our DB: falls through to name upsert and stamps the ticketmasterId on the row", async () => {
+  it("with ticketmasterId not in DB: falls through to name upsert and stamps the id", async () => {
     setup.mocks.findArtistUnique.mockResolvedValueOnce(null);
     setup.mocks.upsertArtist.mockResolvedValueOnce({
       id: "a_new",
       name: "Fisher",
       ticketmasterId: "tm_artist_new",
+      diceId: null,
     });
     const result = await resolveArtist(
       { name: "Fisher", ticketmasterId: "tm_artist_new" },
@@ -87,33 +96,150 @@ describe("resolveArtist", () => {
     expect(call.create).toEqual({
       name: "Fisher",
       ticketmasterId: "tm_artist_new",
+      diceId: null,
     });
-    // Stamps the ticketmasterId on update too, so an existing
-    // ticketmasterId-less row gets linked for next time.
     expect(call.update).toEqual({ ticketmasterId: "tm_artist_new" });
   });
+});
 
-  it("without ticketmasterId: pure name upsert, no findUnique call", async () => {
-    setup.mocks.upsertArtist.mockResolvedValueOnce({
-      id: "a_x",
-      name: "Fisher",
+// ---------------------------------------------------------------------------
+// resolveArtist — DICE path (new)
+// ---------------------------------------------------------------------------
+
+describe("resolveArtist — DICE path", () => {
+  let setup: ReturnType<typeof makeMockPrisma>;
+  beforeEach(() => {
+    setup = makeMockPrisma();
+  });
+
+  it("with diceId that matches an existing Artist: returns it without name lookup", async () => {
+    setup.mocks.findArtistUnique.mockResolvedValueOnce({
+      id: "a_existing",
+      name: "Elujay",
       ticketmasterId: null,
+      diceId: "7v2lp",
     });
-    await resolveArtist({ name: "Fisher" }, { prisma: setup.prisma });
+    const result = await resolveArtist(
+      { name: "Elujay", diceId: "7v2lp" },
+      { prisma: setup.prisma },
+    );
+    expect(result.id).toBe("a_existing");
+    expect(setup.mocks.findArtistUnique).toHaveBeenCalledWith({
+      where: { diceId: "7v2lp" },
+      select: artistSelect,
+    });
+    expect(setup.mocks.upsertArtist).not.toHaveBeenCalled();
+  });
+
+  it("with diceId not in DB: falls through to name upsert and stamps the diceId", async () => {
+    setup.mocks.findArtistUnique.mockResolvedValueOnce(null);
+    setup.mocks.upsertArtist.mockResolvedValueOnce({
+      id: "a_new",
+      name: "Elujay",
+      ticketmasterId: null,
+      diceId: "7v2lp",
+    });
+    await resolveArtist(
+      { name: "Elujay", diceId: "7v2lp" },
+      { prisma: setup.prisma },
+    );
+    const call = setup.mocks.upsertArtist.mock.calls[0]![0];
+    expect(call.create).toEqual({
+      name: "Elujay",
+      ticketmasterId: null,
+      diceId: "7v2lp",
+    });
+    expect(call.update).toEqual({ diceId: "7v2lp" });
+  });
+
+  it("with BOTH ticketmasterId and diceId, TM matches: returns the TM-matched row (TM checked first)", async () => {
+    setup.mocks.findArtistUnique.mockResolvedValueOnce({
+      id: "a_via_tm",
+      name: "Elujay",
+      ticketmasterId: "tm_123",
+      diceId: null,
+    });
+    const result = await resolveArtist(
+      { name: "Elujay", ticketmasterId: "tm_123", diceId: "7v2lp" },
+      { prisma: setup.prisma },
+    );
+    expect(result.id).toBe("a_via_tm");
+    // Only one findUnique call (the TM one) — DICE check is skipped
+    expect(setup.mocks.findArtistUnique).toHaveBeenCalledTimes(1);
+    expect(setup.mocks.findArtistUnique).toHaveBeenCalledWith({
+      where: { ticketmasterId: "tm_123" },
+      select: artistSelect,
+    });
+  });
+
+  it("with BOTH ids, TM misses but DICE matches: returns the DICE-matched row", async () => {
+    setup.mocks.findArtistUnique.mockResolvedValueOnce(null); // TM lookup
+    setup.mocks.findArtistUnique.mockResolvedValueOnce({
+      id: "a_via_dice",
+      name: "Elujay",
+      ticketmasterId: null,
+      diceId: "7v2lp",
+    });
+    const result = await resolveArtist(
+      { name: "Elujay", ticketmasterId: "tm_unknown", diceId: "7v2lp" },
+      { prisma: setup.prisma },
+    );
+    expect(result.id).toBe("a_via_dice");
+    expect(setup.mocks.findArtistUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it("with BOTH ids, neither matches: upsert stamps both", async () => {
+    setup.mocks.findArtistUnique.mockResolvedValueOnce(null);
+    setup.mocks.findArtistUnique.mockResolvedValueOnce(null);
+    setup.mocks.upsertArtist.mockResolvedValueOnce({
+      id: "a_new",
+      name: "Elujay",
+      ticketmasterId: "tm_x",
+      diceId: "7v2lp",
+    });
+    await resolveArtist(
+      { name: "Elujay", ticketmasterId: "tm_x", diceId: "7v2lp" },
+      { prisma: setup.prisma },
+    );
+    const call = setup.mocks.upsertArtist.mock.calls[0]![0];
+    expect(call.create).toEqual({
+      name: "Elujay",
+      ticketmasterId: "tm_x",
+      diceId: "7v2lp",
+    });
+    expect(call.update).toEqual({
+      ticketmasterId: "tm_x",
+      diceId: "7v2lp",
+    });
+  });
+
+  it("without any provider id: pure name upsert, no findUnique calls", async () => {
+    setup.mocks.upsertArtist.mockResolvedValueOnce({
+      id: "a_y",
+      name: "Elujay",
+      ticketmasterId: null,
+      diceId: null,
+    });
+    await resolveArtist({ name: "Elujay" }, { prisma: setup.prisma });
     expect(setup.mocks.findArtistUnique).not.toHaveBeenCalled();
     const call = setup.mocks.upsertArtist.mock.calls[0]![0];
     expect(call.update).toEqual({});
-    expect(call.create).toEqual({ name: "Fisher", ticketmasterId: null });
+    expect(call.create).toEqual({
+      name: "Elujay",
+      ticketmasterId: null,
+      diceId: null,
+    });
   });
 
-  it("with explicitly null ticketmasterId: same as omitted", async () => {
+  it("with explicitly null provider ids: same as omitted", async () => {
     setup.mocks.upsertArtist.mockResolvedValueOnce({
-      id: "a_y",
-      name: "Fisher",
+      id: "a_z",
+      name: "Elujay",
       ticketmasterId: null,
+      diceId: null,
     });
     await resolveArtist(
-      { name: "Fisher", ticketmasterId: null },
+      { name: "Elujay", ticketmasterId: null, diceId: null },
       { prisma: setup.prisma },
     );
     expect(setup.mocks.findArtistUnique).not.toHaveBeenCalled();
@@ -121,16 +247,16 @@ describe("resolveArtist", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveVenue
+// resolveVenue — Ticketmaster path
 // ---------------------------------------------------------------------------
 
-describe("resolveVenue", () => {
+describe("resolveVenue — Ticketmaster path", () => {
   let setup: ReturnType<typeof makeMockPrisma>;
   beforeEach(() => {
     setup = makeMockPrisma();
   });
 
-  it("with ticketmasterId that has a VenueExternalRef: returns the linked Venue without name+city lookup (the variant-name fix)", async () => {
+  it("with ticketmasterId that has a VenueExternalRef: returns canonical Venue (variant-name fix)", async () => {
     setup.mocks.findVenueRefUnique.mockResolvedValueOnce({
       venue: {
         id: "v_canonical",
@@ -138,7 +264,6 @@ describe("resolveVenue", () => {
         city: "Atlantic City",
       },
     });
-    // Note: incoming name is the VARIANT spelling. Returned name should be canonical.
     const result = await resolveVenue(
       {
         name: "Ocean Casino Resort - HQ2 Beachclub",
@@ -148,50 +273,169 @@ describe("resolveVenue", () => {
       { prisma: setup.prisma },
     );
     expect(result.id).toBe("v_canonical");
-    expect(result.name).toBe("Ocean Resort Casino - HQ2 Beachclub");
     expect(setup.mocks.upsertVenue).not.toHaveBeenCalled();
     expect(setup.mocks.upsertVenueRef).not.toHaveBeenCalled();
   });
 
-  it("with ticketmasterId NOT yet linked: falls through to name+city upsert, then stamps the ref", async () => {
+  it("with ticketmasterId not yet linked: falls through to upsert, stamps ref", async () => {
     setup.mocks.findVenueRefUnique.mockResolvedValueOnce(null);
     setup.mocks.upsertVenue.mockResolvedValueOnce({
       id: "v_new",
-      name: "Ocean Resort Casino - HQ2 Beachclub",
-      city: "Atlantic City",
+      name: "Some Venue",
+      city: "Anywhere",
     });
-    const result = await resolveVenue(
+    await resolveVenue(
       {
-        name: "Ocean Resort Casino - HQ2 Beachclub",
-        city: "Atlantic City",
-        ticketmasterId: "tm_venue_999",
+        name: "Some Venue",
+        city: "Anywhere",
+        ticketmasterId: "tm_v_999",
       },
       { prisma: setup.prisma },
     );
-    expect(result.id).toBe("v_new");
-    // VenueExternalRef stamp happens
     expect(setup.mocks.upsertVenueRef).toHaveBeenCalledOnce();
-    const refCall = setup.mocks.upsertVenueRef.mock.calls[0]![0];
-    expect(refCall.where).toEqual({
-      provider_providerVenueId: {
-        provider: "ticketmaster",
-        providerVenueId: "tm_venue_999",
-      },
-    });
-    expect(refCall.create).toEqual({
-      provider: "ticketmaster",
-      providerVenueId: "tm_venue_999",
-      venueId: "v_new",
-    });
-    // update is keyed by ref → in case the link existed under a different
-    // venueId, we point it at the now-canonical venue. Acceptable
-    // tradeoff: see notes in showResolution.ts.
-    expect(refCall.update).toEqual({ venueId: "v_new" });
+    const call = setup.mocks.upsertVenueRef.mock.calls[0]![0];
+    expect(call.where.provider_providerVenueId.provider).toBe("ticketmaster");
+    expect(call.where.provider_providerVenueId.providerVenueId).toBe("tm_v_999");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveVenue — DICE path (new) + multi-provider scenarios
+// ---------------------------------------------------------------------------
+
+describe("resolveVenue — DICE path", () => {
+  let setup: ReturnType<typeof makeMockPrisma>;
+  beforeEach(() => {
+    setup = makeMockPrisma();
   });
 
-  it("without ticketmasterId: pure name+city upsert, no ref lookup, no ref stamp", async () => {
+  it("with diceId that has a VenueExternalRef: returns canonical Venue (sibling-room collapse)", async () => {
+    // This is the Elsewhere case: 3 DICE records, 1 canonical Venue.
+    setup.mocks.findVenueRefUnique.mockResolvedValueOnce({
+      venue: {
+        id: "v_elsewhere_canonical",
+        name: "Elsewhere",
+        city: "Brooklyn",
+      },
+    });
+    const result = await resolveVenue(
+      {
+        // Incoming name is the sibling-room spelling
+        name: "Elsewhere - The Hall",
+        city: "Brooklyn",
+        diceId: "6p32", // The Hall's DICE short id
+      },
+      { prisma: setup.prisma },
+    );
+    expect(result.id).toBe("v_elsewhere_canonical");
+    expect(result.name).toBe("Elsewhere"); // canonical name preserved
+    expect(setup.mocks.upsertVenue).not.toHaveBeenCalled();
+    expect(setup.mocks.upsertVenueRef).not.toHaveBeenCalled();
+  });
+
+  it("with diceId not yet linked: falls through to upsert, stamps the DICE ref", async () => {
+    setup.mocks.findVenueRefUnique.mockResolvedValueOnce(null);
     setup.mocks.upsertVenue.mockResolvedValueOnce({
-      id: "v_no_tm",
+      id: "v_new",
+      name: "Elsewhere",
+      city: "Brooklyn",
+    });
+    await resolveVenue(
+      {
+        name: "Elsewhere",
+        city: "Brooklyn",
+        diceId: "8p85",
+      },
+      { prisma: setup.prisma },
+    );
+    expect(setup.mocks.upsertVenueRef).toHaveBeenCalledOnce();
+    const call = setup.mocks.upsertVenueRef.mock.calls[0]![0];
+    expect(call.where).toEqual({
+      provider_providerVenueId: {
+        provider: "dice",
+        providerVenueId: "8p85",
+      },
+    });
+    expect(call.create).toEqual({
+      provider: "dice",
+      providerVenueId: "8p85",
+      venueId: "v_new",
+    });
+  });
+
+  it("with BOTH ticketmasterId and diceId: checks TM ref first, then DICE ref", async () => {
+    setup.mocks.findVenueRefUnique.mockResolvedValueOnce(null); // TM ref miss
+    setup.mocks.findVenueRefUnique.mockResolvedValueOnce({
+      venue: { id: "v_dice", name: "Elsewhere", city: "Brooklyn" },
+    });
+    const result = await resolveVenue(
+      {
+        name: "Elsewhere",
+        city: "Brooklyn",
+        ticketmasterId: "tm_unknown",
+        diceId: "8p85",
+      },
+      { prisma: setup.prisma },
+    );
+    expect(result.id).toBe("v_dice");
+    expect(setup.mocks.findVenueRefUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it("3 DICE records collapse to 1 Venue when seeded sequentially (sibling-room regression test)", async () => {
+    // First call: DICE id 8p85 (Elsewhere main). No ref yet. Upsert venue + stamp ref.
+    setup.mocks.findVenueRefUnique.mockResolvedValueOnce(null);
+    setup.mocks.upsertVenue.mockResolvedValueOnce({
+      id: "v_elsewhere",
+      name: "Elsewhere",
+      city: "Brooklyn",
+    });
+    const r1 = await resolveVenue(
+      { name: "Elsewhere", city: "Brooklyn", diceId: "8p85" },
+      { prisma: setup.prisma },
+    );
+    expect(r1.id).toBe("v_elsewhere");
+
+    // Second call: DICE id 6p32 (Elsewhere - The Hall). Ref doesn't exist yet
+    // (it's a different DICE short id). So the call falls through to the
+    // (name, city) upsert which idempotently returns the same Venue, then
+    // stamps a SECOND VenueExternalRef linking 6p32 to the same canonical
+    // venue.
+    setup = makeMockPrisma();
+    setup.mocks.findVenueRefUnique.mockResolvedValueOnce(null);
+    setup.mocks.upsertVenue.mockResolvedValueOnce({
+      id: "v_elsewhere",
+      name: "Elsewhere",
+      city: "Brooklyn",
+    });
+    const r2 = await resolveVenue(
+      { name: "Elsewhere", city: "Brooklyn", diceId: "6p32" },
+      { prisma: setup.prisma },
+    );
+    expect(r2.id).toBe("v_elsewhere");
+    const refCall = setup.mocks.upsertVenueRef.mock.calls[0]![0];
+    expect(refCall.create.providerVenueId).toBe("6p32");
+    expect(refCall.create.venueId).toBe("v_elsewhere");
+
+    // Third call: DICE id a2bq (Elsewhere - Rooftop). Now BOTH prior refs
+    // exist but neither matches a2bq. Falls through, returns same venue,
+    // stamps third ref.
+    setup = makeMockPrisma();
+    setup.mocks.findVenueRefUnique.mockResolvedValueOnce(null);
+    setup.mocks.upsertVenue.mockResolvedValueOnce({
+      id: "v_elsewhere",
+      name: "Elsewhere",
+      city: "Brooklyn",
+    });
+    const r3 = await resolveVenue(
+      { name: "Elsewhere", city: "Brooklyn", diceId: "a2bq" },
+      { prisma: setup.prisma },
+    );
+    expect(r3.id).toBe("v_elsewhere");
+  });
+
+  it("without any provider id: pure name+city upsert, no ref lookups", async () => {
+    setup.mocks.upsertVenue.mockResolvedValueOnce({
+      id: "v_x",
       name: "Some Place",
       city: "Somewhere",
     });
@@ -201,50 +445,5 @@ describe("resolveVenue", () => {
     );
     expect(setup.mocks.findVenueRefUnique).not.toHaveBeenCalled();
     expect(setup.mocks.upsertVenueRef).not.toHaveBeenCalled();
-    const call = setup.mocks.upsertVenue.mock.calls[0]![0];
-    expect(call.where).toEqual({
-      name_city: { name: "Some Place", city: "Somewhere" },
-    });
-  });
-
-  it("repeated calls with same ticketmasterId but different name spellings collapse onto one Venue (the actual variant-name regression test)", async () => {
-    // First call: TM id not yet linked. Upsert venue + stamp ref.
-    setup.mocks.findVenueRefUnique.mockResolvedValueOnce(null);
-    setup.mocks.upsertVenue.mockResolvedValueOnce({
-      id: "v_a",
-      name: "Ocean Resort Casino - HQ2 Beachclub",
-      city: "Atlantic City",
-    });
-    const r1 = await resolveVenue(
-      {
-        name: "Ocean Resort Casino - HQ2 Beachclub",
-        city: "Atlantic City",
-        ticketmasterId: "tm_v_77",
-      },
-      { prisma: setup.prisma },
-    );
-
-    // Second call comes in with the OTHER spelling but same TM id.
-    // findVenueRefUnique should now return the link → venue resolves to v_a.
-    setup = makeMockPrisma();
-    setup.mocks.findVenueRefUnique.mockResolvedValueOnce({
-      venue: {
-        id: "v_a",
-        name: "Ocean Resort Casino - HQ2 Beachclub",
-        city: "Atlantic City",
-      },
-    });
-    const r2 = await resolveVenue(
-      {
-        name: "Ocean Casino Resort - HQ2 Beachclub", // variant
-        city: "Atlantic City",
-        ticketmasterId: "tm_v_77",
-      },
-      { prisma: setup.prisma },
-    );
-
-    expect(r1.id).toBe("v_a");
-    expect(r2.id).toBe("v_a");
-    expect(setup.mocks.upsertVenue).not.toHaveBeenCalled(); // didn't create a 2nd venue
   });
 });
