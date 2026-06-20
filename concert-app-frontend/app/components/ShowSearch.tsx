@@ -28,7 +28,12 @@ type TmItem = {
   source: "ticketmaster";
   externalId: string;
   artistName: string;
+  // Stable Ticketmaster ids carried forward to /shows/confirm so it
+  // can resolve to a canonical Artist/Venue regardless of which
+  // spelling variant TM returned for this event.
+  artistTicketmasterId: string | null;
   venueName: string;
+  venueTicketmasterId: string | null;
   city: string;
   localDate: string;
 };
@@ -148,7 +153,9 @@ export default function ShowSearch() {
             source: "ticketmaster" as const,
             externalId: i.providerEventId,
             artistName: i.artist,
+            artistTicketmasterId: i.artistTicketmasterId ?? null,
             venueName: i.venue,
+            venueTicketmasterId: i.venueTicketmasterId ?? null,
             city: i.city ?? "",
             localDate: i.localDate,
           }));
@@ -219,6 +226,8 @@ export default function ShowSearch() {
           venue: item.venueName,
           city: item.city,
           localDate: dateOnly(item.localDate),
+          artistTicketmasterId: item.artistTicketmasterId,
+          venueTicketmasterId: item.venueTicketmasterId,
         }),
       });
       const data = await res.json().catch(() => ({}));

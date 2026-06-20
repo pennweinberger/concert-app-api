@@ -30,6 +30,10 @@ import {
   MAX_SHOW_SEARCH_LIMIT,
 } from "./lib/showSearch.js";
 import {
+  resolveArtist,
+  resolveVenue,
+} from "./lib/showResolution.js";
+import {
   generateTokenString,
   tokenExpiresAt,
   checkToken,
@@ -843,15 +847,21 @@ app.get(
         // different tours collapse onto one Artist row; fall back
         // to event.name only when no attractions are present
         // (uncommon — e.g. some festivals).
-        const attractionName: string | undefined =
-          event._embedded?.attractions?.[0]?.name;
+        const attraction = event._embedded?.attractions?.[0];
+        const tmVenue = event._embedded?.venues?.[0];
         return {
           provider: "ticketmaster",
           providerEventId: event.id,
-          artist: attractionName || event.name,
+          artist: attraction?.name || event.name,
+          // Stable Ticketmaster ids — surfaced so /shows/confirm can
+          // resolve Artist + Venue rows by id, collapsing variant
+          // name spellings ("Ocean Resort Casino" vs "Ocean Casino
+          // Resort") onto one canonical row.
+          artistTicketmasterId: attraction?.id ?? null,
           eventName: event.name,
-          venue: event._embedded?.venues?.[0]?.name,
-          city: event._embedded?.venues?.[0]?.city?.name,
+          venue: tmVenue?.name,
+          venueTicketmasterId: tmVenue?.id ?? null,
+          city: tmVenue?.city?.name,
           localDate: event.dates?.start?.localDate,
           ticketUrl: event.url,
         };
@@ -870,6 +880,8 @@ app.post("/shows/confirm", async (request, reply) => {
     venue: string;
     city: string;
     localDate: string;
+    artistTicketmasterId?: string | null;
+    venueTicketmasterId?: string | null;
   };
 
   const { artist, venue, city, localDate } = body;
@@ -883,28 +895,27 @@ app.post("/shows/confirm", async (request, reply) => {
   try {
     const parsedDate = new Date(`${localDate}T00:00:00.000Z`);
 
-    // Race-safe Artist resolution via the unique index on Artist.name.
-    // Two concurrent requests for the same artist now collide on the
-    // index inside Postgres and only one row is created.
-    const artistRecord = await prisma.artist.upsert({
-      where: { name: artist },
-      update: {},
-      create: { name: artist },
-    });
+    // Resolve Artist + Venue via the showResolution lib. When the
+    // caller passes a Ticketmaster id, those are the primary lookup
+    // keys — collapsing variant name spellings onto canonical rows.
+    // When they're absent, the lib falls back to race-safe name(+city)
+    // upserts via the unique indexes.
+    const artistRecord = await resolveArtist(
+      { name: artist, ticketmasterId: body.artistTicketmasterId ?? null },
+      { prisma },
+    );
+    const venueRecord = await resolveVenue(
+      {
+        name: venue,
+        city,
+        ticketmasterId: body.venueTicketmasterId ?? null,
+      },
+      { prisma },
+    );
 
-    // Race-safe Venue resolution via the unique index on (name, city).
-    const venueRecord = await prisma.venue.upsert({
-      where: { name_city: { name: venue, city } },
-      update: {},
-      create: { name: venue, city },
-    });
-
-    // Show resolution: the existing @@unique([artistId, venueId,
-    // localDate]) prevents duplicate Shows once Artist+Venue are
-    // race-safe. We do a findUnique first so the response's `existing`
-    // flag stays accurate for happy-path callers; if a concurrent
-    // request races us between the findUnique and create, the create
-    // throws P2002 and we re-read.
+    // Show resolution: findUnique first so the `existing` flag stays
+    // accurate for happy-path callers; on a concurrent-create race,
+    // the second create throws P2002 and we re-read the winner.
     const existingShow = await prisma.show.findUnique({
       where: {
         artistId_venueId_localDate: {
