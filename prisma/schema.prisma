@@ -29,6 +29,7 @@ model User {
 
   reviews            Review[]
   reviewLikes        ReviewLike[]
+  reviewComments     ReviewComment[]
   attendances        Attendance[]
   verificationTokens VerificationToken[]
 
@@ -161,6 +162,7 @@ model Review {
   user             User @relation(fields: [userId], references: [id])
   show             Show @relation(fields: [showId], references: [id])
   likes            ReviewLike[]
+  comments         ReviewComment[]
 
   @@index([publishedAt])
   @@index([showId])
@@ -223,4 +225,20 @@ model ProviderMatchReview {
 
   @@unique([provider, providerEventId])
   @@index([status, createdAt])
+}
+
+model ReviewComment {
+  id               String   @id @default(cuid())
+  reviewId         String
+  userId           String
+  body             String
+  moderationStatus ModerationStatus @default(PENDING)
+  moderationFlags  Json?
+  createdAt        DateTime @default(now())
+
+  review           Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user             User   @relation(fields: [userId], references: [id])
+
+  @@index([reviewId, createdAt])
+  @@index([userId])
 }
