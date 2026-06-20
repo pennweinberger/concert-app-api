@@ -69,6 +69,7 @@ model Artist {
   id                   String   @id @default(cuid())
   name                 String   @unique
   ticketmasterId       String?  @unique
+  diceId               String?  @unique
   mbid                 String?
   mbidConfidence       Float?
   lastMbidLookupAt     DateTime?
@@ -79,12 +80,13 @@ model Artist {
 }
 
 model Venue {
-  id        String   @id @default(cuid())
-  name      String
-  city      String
-  country   String?
-  timezone  String?
-  createdAt DateTime @default(now())
+  id               String   @id @default(cuid())
+  name             String
+  city             String
+  country          String?
+  timezone         String?
+  createdAt        DateTime @default(now())
+  lastDiceFetchAt  DateTime?
 
   shows                Show[]
   externalRefs         VenueExternalRef[]
