@@ -44,6 +44,11 @@ export default function CommentsSection({ reviewId, initialCount }: Props) {
   const [composer, setComposer] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Two-step delete confirmation: holds the comment id that is currently
+  // awaiting confirmation. Clicking "Delete" sets it; clicking "Confirm"
+  // performs the delete; clicking "Cancel" or hitting "Delete" on a
+  // different row resets it. Only one row can be in this state at a time.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const loadInitial = useCallback(async () => {
     if (loaded || loading) return;
@@ -257,9 +262,9 @@ export default function CommentsSection({ reviewId, initialCount }: Props) {
                       minute: "2-digit",
                     })}
                   </span>
-                  {owned && (
+                  {owned && pendingDeleteId !== c.id && (
                     <button
-                      onClick={() => remove(c.id)}
+                      onClick={() => setPendingDeleteId(c.id)}
                       aria-label="Delete your comment"
                       style={{
                         marginLeft: "auto",
@@ -271,8 +276,53 @@ export default function CommentsSection({ reviewId, initialCount }: Props) {
                         padding: "2px 6px",
                       }}
                     >
-                      ×
+                      Delete
                     </button>
+                  )}
+                  {owned && pendingDeleteId === c.id && (
+                    <div
+                      style={{
+                        marginLeft: "auto",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <span style={{ color: "#aaa", fontSize: "12px" }}>
+                        Delete this comment?
+                      </span>
+                      <button
+                        onClick={async () => {
+                          await remove(c.id);
+                          setPendingDeleteId(null);
+                        }}
+                        style={{
+                          background: "transparent",
+                          border: "1px solid #ff8080",
+                          color: "#ff8080",
+                          padding: "2px 8px",
+                          borderRadius: "999px",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                        }}
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={() => setPendingDeleteId(null)}
+                        style={{
+                          background: "transparent",
+                          border: "1px solid #555",
+                          color: "#aaa",
+                          padding: "2px 8px",
+                          borderRadius: "999px",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   )}
                 </div>
                 <div style={{ color: "#f4f1ea", whiteSpace: "pre-wrap" }}>
