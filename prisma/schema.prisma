@@ -24,6 +24,8 @@ model User {
   name            String?
   avatarUrl       String?
   createdAt       DateTime @default(now())
+  deletedAt       DateTime?
+  anonymizedAt    DateTime?
 
   reviews            Review[]
   reviewLikes        ReviewLike[]
