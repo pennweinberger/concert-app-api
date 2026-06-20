@@ -12,6 +12,8 @@ export type AuthUser = {
   handle: string;
   email?: string | null;
   emailVerified?: boolean;
+  pendingDeletion?: boolean;
+  deletionScheduledFor?: string | null;
 };
 
 const TOKEN_KEY = "afterset_token";
@@ -75,6 +77,8 @@ export async function refreshUser(apiBase: string): Promise<AuthUser | null> {
       handle: data.user.handle,
       email: data.user.email ?? null,
       emailVerified: !!data.user.emailVerified,
+      pendingDeletion: !!data.user.pendingDeletion,
+      deletionScheduledFor: data.user.deletionScheduledFor ?? null,
     };
     setSession(token, next);
     return next;

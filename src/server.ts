@@ -6,7 +6,17 @@ import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { registerInternalRoutes } from "./routes/internal.js";
-import { sendVerificationEmail, sendPasswordResetEmail } from "./lib/email.js";
+import {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  sendAccountDeleteConfirmEmail,
+} from "./lib/email.js";
+import {
+  requestAccountDelete,
+  confirmAccountDelete,
+  cancelAccountDelete,
+  deletionScheduledFor,
+} from "./lib/accountLifecycle.js";
 import {
   generateTokenString,
   tokenExpiresAt,
@@ -122,6 +132,8 @@ const rateLimitVerifyEmail = makeRateLimit("verify-email", 20, 60_000); // 20 / 
 const rateLimitResendVerification = makeRateLimit("resend-verification", 3, 60 * 60_000); // 3 / hour / IP
 const rateLimitForgotPassword = makeRateLimit("forgot-password", 3, 60 * 60_000); // 3 / hour / IP
 const rateLimitResetPassword = makeRateLimit("reset-password", 10, 60_000); // 10 / min / IP
+const rateLimitRequestDelete = makeRateLimit("request-delete", 3, 60 * 60_000); // 3 / hour / IP
+const rateLimitConfirmDelete = makeRateLimit("confirm-delete", 10, 60_000); // 10 / min / IP
 
 // Catch unhandled errors and forward to Sentry (no-op if Sentry not
 // initialized). Falls through to Fastify's default error response.
@@ -139,6 +151,10 @@ function normalizeHandle(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const handle = raw.trim().replace(/^@/, "");
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) return null;
+  // Reserve leading underscore for system handles (e.g. _deleted_*
+  // tombstones from anonymized accounts). Existing users without
+  // leading underscore are unaffected.
+  if (handle.startsWith("_")) return null;
   return handle;
 }
 
@@ -325,6 +341,11 @@ app.post(
   if (!user || !user.passwordHash) {
     return reply.status(401).send({ error: "Invalid credentials" });
   }
+  if (user.anonymizedAt) {
+    // Tombstone — login forever rejected. Same generic error so we
+    // do not reveal that this handle once belonged to a real account.
+    return reply.status(401).send({ error: "Invalid credentials" });
+  }
 
   const ok = await bcrypt.compare(body.password, user.passwordHash);
   if (!ok) {
@@ -343,6 +364,10 @@ app.post(
       handle: user.handle,
       email: user.email,
       emailVerified: user.emailVerifiedAt !== null,
+      pendingDeletion: user.deletedAt !== null,
+      deletionScheduledFor: user.deletedAt
+        ? deletionScheduledFor(user.deletedAt).toISOString()
+        : null,
     },
   };
 });
@@ -362,9 +387,15 @@ app.get("/auth/me", async (request, reply) => {
       emailVerifiedAt: true,
       name: true,
       avatarUrl: true,
+      deletedAt: true,
+      anonymizedAt: true,
     },
   });
   if (!dbUser) {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+  if (dbUser.anonymizedAt) {
+    // Tombstoned — JWT may still be valid but the identity is gone.
     return reply.status(401).send({ error: "Not authenticated" });
   }
   return {
@@ -375,6 +406,10 @@ app.get("/auth/me", async (request, reply) => {
       emailVerified: dbUser.emailVerifiedAt !== null,
       name: dbUser.name,
       avatarUrl: dbUser.avatarUrl,
+      pendingDeletion: dbUser.deletedAt !== null,
+      deletionScheduledFor: dbUser.deletedAt
+        ? deletionScheduledFor(dbUser.deletedAt).toISOString()
+        : null,
     },
   };
 });
@@ -615,6 +650,123 @@ app.post(
     }
   },
 );
+
+// Authenticated. Starts the account-deletion flow by sending a
+// confirmation email. The actual soft-delete only happens after the
+// user clicks the link and POSTs to /auth/confirm-delete/:token.
+app.post(
+  "/auth/request-delete",
+  { preHandler: rateLimitRequestDelete },
+  async (request, reply) => {
+    try {
+      await request.jwtVerify();
+    } catch {
+      return reply.status(401).send({ error: "Not authenticated" });
+    }
+    const result = await requestAccountDelete(
+      { userId: request.user.userId },
+      {
+        prisma,
+        sendAccountDeleteConfirmEmail,
+        now: () => new Date(),
+      },
+    );
+    if (!result.ok) {
+      switch (result.reason) {
+        case "already_pending":
+          return reply.status(409).send({
+            error: "Account deletion is already pending",
+            reason: "already_pending",
+          });
+        case "anonymized":
+          return reply.status(401).send({ error: "Not authenticated" });
+        case "no_email":
+          return reply.status(400).send({
+            error: "No email on account",
+            reason: "no_email",
+          });
+      }
+    }
+    return { sent: result.emailAttempted };
+  },
+);
+
+// Public — token in the URL acts as auth. Sets User.deletedAt and
+// starts the 30-day grace clock.
+app.post(
+  "/auth/confirm-delete/:token",
+  { preHandler: rateLimitConfirmDelete },
+  async (request, reply) => {
+    const { token } = request.params as { token?: string };
+    if (!token || typeof token !== "string" || token.length === 0) {
+      return reply.status(400).send({ error: "Token required" });
+    }
+
+    const result = await confirmAccountDelete(
+      { token },
+      { prisma, now: () => new Date() },
+    );
+
+    if (result.ok) {
+      return {
+        ok: true,
+        deletionScheduledFor: result.deletionScheduledFor.toISOString(),
+      };
+    }
+
+    switch (result.reason) {
+      case "invalid_token":
+        return reply.status(400).send({
+          error: "Invalid or expired confirmation link",
+          reason: "invalid_token",
+        });
+      case "expired":
+        return reply.status(400).send({
+          error: "Confirmation link has expired",
+          reason: "expired",
+        });
+      case "consumed":
+        return reply.status(400).send({
+          error: "Confirmation link has already been used",
+          reason: "consumed",
+        });
+      case "anonymized":
+        return reply.status(410).send({
+          error: "Account has already been deleted",
+          reason: "anonymized",
+        });
+    }
+  },
+);
+
+// Authenticated. Reverses a pending soft-delete during the grace
+// window. Cannot un-tombstone an already-anonymized account.
+app.post("/auth/cancel-delete", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+
+  const result = await cancelAccountDelete(
+    { userId: request.user.userId },
+    { prisma },
+  );
+
+  if (result.ok) {
+    return { ok: true };
+  }
+
+  switch (result.reason) {
+    case "no_pending":
+      return reply.status(400).send({
+        error: "Account is not scheduled for deletion",
+        reason: "no_pending",
+      });
+    case "anonymized":
+      return reply.status(401).send({ error: "Not authenticated" });
+  }
+});
 
 // --- End auth --------------------------------------------------------------
 
@@ -1443,10 +1595,15 @@ app.get("/users/:handle", async (request, reply) => {
         name: true,
         avatarUrl: true,
         createdAt: true,
+        anonymizedAt: true,
       },
     });
 
-    if (!user) {
+    if (!user || user.anonymizedAt) {
+      // 404 for anonymized users: the handle is now _deleted_<suffix>,
+      // and the public-facing identity is gone. Reviews still attribute
+      // to this row in show/feed responses; the frontend renders those
+      // as "[deleted user]" without a link to a profile page.
       return reply.status(404).send({ error: "User not found" });
     }
 

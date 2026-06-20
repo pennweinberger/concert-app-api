@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { authHeaders } from "../../lib/auth";
+import { isDeletedHandle, DELETED_USER_LABEL } from "../../lib/displayUser";
 import LikeButton from "../../components/LikeButton";
 import StarRating from "../../components/StarRating";
 import Avatar from "../../components/Avatar";
@@ -183,45 +184,63 @@ export default function ArtistPage() {
                     gap: "12px",
                   }}
                 >
-                  <Link
-                    href={`/user/${review.userHandle}`}
-                    aria-label={`View @${review.userHandle}`}
-                    style={{
-                      pointerEvents: "auto",
-                      position: "relative",
-                      flexShrink: 0,
-                      textDecoration: "none",
-                    }}
-                  >
-                    <Avatar
-                      handle={review.userHandle}
-                      name={review.userName}
-                      avatarUrl={review.userAvatarUrl}
-                      size={36}
+                  {isDeletedHandle(review.userHandle) ? (
+                    <div
+                      aria-label="deleted user"
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: "50%",
+                        background: "#2a2a2a",
+                        flexShrink: 0,
+                        position: "relative",
+                      }}
                     />
-                  </Link>
+                  ) : (
+                    <Link
+                      href={`/user/${review.userHandle}`}
+                      aria-label={`View @${review.userHandle}`}
+                      style={{
+                        pointerEvents: "auto",
+                        position: "relative",
+                        flexShrink: 0,
+                        textDecoration: "none",
+                      }}
+                    >
+                      <Avatar
+                        handle={review.userHandle}
+                        name={review.userName}
+                        avatarUrl={review.userAvatarUrl}
+                        size={36}
+                      />
+                    </Link>
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "15px" }}>
-                      {review.userName && (
+                      {review.userName && !isDeletedHandle(review.userHandle) && (
                         <span
                           style={{ color: "#f4f1ea", fontWeight: "bold" }}
                         >
                           {review.userName}{" "}
                         </span>
                       )}
-                      <Link
-                        href={`/user/${review.userHandle}`}
-                        style={{
-                          color: "#f4f1ea",
-                          textDecoration: "underline",
-                          textUnderlineOffset: "3px",
-                          fontWeight: review.userName ? "normal" : "bold",
-                          pointerEvents: "auto",
-                          position: "relative",
-                        }}
-                      >
-                        @{review.userHandle}
-                      </Link>
+                      {isDeletedHandle(review.userHandle) ? (
+                        <span style={{ color: "#888" }}>{DELETED_USER_LABEL}</span>
+                      ) : (
+                        <Link
+                          href={`/user/${review.userHandle}`}
+                          style={{
+                            color: "#f4f1ea",
+                            textDecoration: "underline",
+                            textUnderlineOffset: "3px",
+                            fontWeight: review.userName ? "normal" : "bold",
+                            pointerEvents: "auto",
+                            position: "relative",
+                          }}
+                        >
+                          @{review.userHandle}
+                        </Link>
+                      )}
                     </div>
                     <div
                       style={{

@@ -139,6 +139,37 @@ This link expires in 1 hour. If you did not request a reset, you can ignore this
 }
 
 // ---------------------------------------------------------------------------
+// Account deletion confirmation email
+// ---------------------------------------------------------------------------
+
+export async function sendAccountDeleteConfirmEmail(opts: {
+  to: string;
+  handle: string;
+  token: string;
+}): Promise<EmailSendResult> {
+  const link = `${getWebBaseUrl()}/confirm-delete?token=${encodeURIComponent(opts.token)}`;
+  const subject = "Confirm your Afterset account deletion";
+  const text = `Hi @${opts.handle},
+
+You requested to delete your Afterset account.
+
+Click the link below to confirm. After confirming, your account will be scheduled for deletion in 30 days. You can sign in during that time and cancel if you change your mind.
+
+${link}
+
+This link expires in 1 hour. If you did not request this, you can ignore this email.
+
+— Afterset`;
+  const html = `<p>Hi @${escapeHtml(opts.handle)},</p>
+<p>You requested to delete your Afterset account.</p>
+<p><a href="${escapeAttr(link)}">Confirm account deletion</a></p>
+<p>After confirming, your account will be scheduled for deletion in 30 days. You can sign in during that time and cancel if you change your mind.</p>
+<p>This link expires in 1 hour. If you did not request this, you can ignore this email.</p>
+<p>— Afterset</p>`;
+  return send({ to: opts.to, subject, text, html });
+}
+
+// ---------------------------------------------------------------------------
 // HTML escaping helpers — defensive even though @handle is restricted
 // to [A-Za-z0-9_].
 // ---------------------------------------------------------------------------

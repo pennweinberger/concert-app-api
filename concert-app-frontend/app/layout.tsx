@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Jost } from "next/font/google";
 import "./globals.css";
 import VerifyEmailBanner from "./components/VerifyEmailBanner";
+import PendingDeletionBanner from "./components/PendingDeletionBanner";
 
 // Workhorse sans for body, UI, secondary headings, and stats.
 const inter = Inter({
@@ -36,6 +37,7 @@ export default function RootLayout({
       className={`${inter.variable} ${jost.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <PendingDeletionBanner />
         <VerifyEmailBanner />
         {children}
       </body>

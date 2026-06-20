@@ -269,7 +269,194 @@ export default function SettingsPage() {
         >
           {submitting ? "Saving…" : "Save"}
         </button>
+
+        <DangerZone />
       </div>
     </main>
+  );
+}
+
+// Account-deletion entry point. Two-step: an initial button reveals the
+// "are you sure" confirmation, which posts to /auth/request-delete and
+// shows the "check your email" message. The actual deletion only takes
+// effect after the user opens the email and clicks through the
+// /confirm-delete page.
+function DangerZone() {
+  const [expanded, setExpanded] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [requestState, setRequestState] = useState<
+    | { kind: "idle" }
+    | { kind: "sent" }
+    | { kind: "error"; message: string }
+    | { kind: "already_pending" }
+  >({ kind: "idle" });
+
+  async function requestDelete() {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/request-delete`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setRequestState({ kind: "sent" });
+      } else if (res.status === 409) {
+        setRequestState({ kind: "already_pending" });
+      } else {
+        setRequestState({
+          kind: "error",
+          message:
+            (data?.error as string | undefined) ??
+            "Could not start account deletion.",
+        });
+      }
+    } catch {
+      setRequestState({
+        kind: "error",
+        message: "Could not reach the server.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: "48px",
+        paddingTop: "24px",
+        borderTop: "1px solid #2a1f1f",
+      }}
+    >
+      <h2
+        style={{
+          fontSize: "16px",
+          color: "#ff8080",
+          marginBottom: "12px",
+        }}
+      >
+        Danger zone
+      </h2>
+
+      {!expanded && requestState.kind === "idle" && (
+        <button
+          onClick={() => setExpanded(true)}
+          style={{
+            background: "transparent",
+            border: "1px solid #ff8080",
+            color: "#ff8080",
+            padding: "10px 16px",
+            borderRadius: "12px",
+            cursor: "pointer",
+            fontSize: "14px",
+          }}
+        >
+          Delete account
+        </button>
+      )}
+
+      {expanded && requestState.kind === "idle" && (
+        <div
+          style={{
+            background: "#1f1f1f",
+            padding: "16px",
+            borderRadius: "12px",
+            border: "1px solid #3a1f1f",
+          }}
+        >
+          <p
+            style={{
+              color: "#f4f1ea",
+              fontSize: "14px",
+              marginBottom: "12px",
+              lineHeight: 1.5,
+            }}
+          >
+            Are you sure? We will email you a confirmation link. After you
+            click it, your account will be scheduled for deletion in 30
+            days. Your reviews will remain on Afterset as archive records,
+            attributed as <em>[deleted user]</em>.
+          </p>
+          <div style={{ display: "flex", gap: "12px" }}>
+            <button
+              onClick={requestDelete}
+              disabled={submitting}
+              style={{
+                background: submitting ? "#555" : "#ff8080",
+                border: "none",
+                color: "#0a0a0a",
+                padding: "10px 16px",
+                borderRadius: "12px",
+                cursor: submitting ? "not-allowed" : "pointer",
+                fontSize: "14px",
+                fontWeight: "bold",
+              }}
+            >
+              {submitting ? "Sending…" : "Send confirmation email"}
+            </button>
+            <button
+              onClick={() => setExpanded(false)}
+              disabled={submitting}
+              style={{
+                background: "transparent",
+                border: "1px solid #555",
+                color: "#aaa",
+                padding: "10px 16px",
+                borderRadius: "12px",
+                cursor: "pointer",
+                fontSize: "14px",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {requestState.kind === "sent" && (
+        <div
+          style={{
+            background: "#1f1f1f",
+            padding: "12px",
+            borderRadius: "12px",
+            color: "#9be597",
+            fontSize: "14px",
+          }}
+        >
+          We sent a confirmation link to your email. Click it to schedule
+          deletion (you can still cancel during the 30-day grace period).
+        </div>
+      )}
+
+      {requestState.kind === "already_pending" && (
+        <div
+          style={{
+            background: "#1f1f1f",
+            padding: "12px",
+            borderRadius: "12px",
+            color: "#f4d27d",
+            fontSize: "14px",
+          }}
+        >
+          Your account is already scheduled for deletion. See the banner
+          at the top of the page to cancel.
+        </div>
+      )}
+
+      {requestState.kind === "error" && (
+        <div
+          style={{
+            background: "#1f1f1f",
+            padding: "12px",
+            borderRadius: "12px",
+            color: "#ff8080",
+            fontSize: "14px",
+          }}
+        >
+          {requestState.message}
+        </div>
+      )}
+    </div>
   );
 }

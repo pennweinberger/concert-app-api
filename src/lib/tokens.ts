@@ -4,14 +4,19 @@
 
 import { randomBytes } from "node:crypto";
 
-export type VerificationTokenType = "email_verify" | "password_reset";
+export type VerificationTokenType =
+  | "email_verify"
+  | "password_reset"
+  | "account_delete";
 
 // TTLs by token type. Email verify is intentionally generous (most
 // users won't click the link immediately). Password reset is tight
-// because the attack window matters more.
+// because the attack window matters more. Account delete is also
+// tight — destructive action, short window is appropriate.
 const TTL_MS: Record<VerificationTokenType, number> = {
   email_verify: 24 * 60 * 60_000,
   password_reset: 60 * 60_000,
+  account_delete: 60 * 60_000,
 };
 
 // 64 hex chars (256 bits of entropy). Plenty against brute force, and

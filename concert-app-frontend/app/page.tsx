@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authHeaders, clearSession, useAuthUser } from "./lib/auth";
+import { isDeletedHandle, DELETED_USER_LABEL } from "./lib/displayUser";
 import LikeButton from "./components/LikeButton";
 import StarRating from "./components/StarRating";
 import Avatar from "./components/Avatar";
@@ -371,32 +372,50 @@ export default function Home() {
                   gap: "12px",
                 }}
               >
-                <Link
-                  href={`/user/${item.userHandle}`}
-                  aria-label={`View @${item.userHandle}`}
-                  style={{
-                    pointerEvents: "auto",
-                    position: "relative",
-                    flexShrink: 0,
-                    textDecoration: "none",
-                  }}
-                >
-                  <Avatar
-                    handle={item.userHandle}
-                    name={item.userName}
-                    avatarUrl={item.userAvatarUrl}
-                    size={36}
+                {isDeletedHandle(item.userHandle) ? (
+                  <div
+                    aria-label="deleted user"
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: "50%",
+                      background: "#2a2a2a",
+                      flexShrink: 0,
+                    }}
                   />
-                </Link>
+                ) : (
+                  <Link
+                    href={`/user/${item.userHandle}`}
+                    aria-label={`View @${item.userHandle}`}
+                    style={{
+                      pointerEvents: "auto",
+                      position: "relative",
+                      flexShrink: 0,
+                      textDecoration: "none",
+                    }}
+                  >
+                    <Avatar
+                      handle={item.userHandle}
+                      name={item.userName}
+                      avatarUrl={item.userAvatarUrl}
+                      size={36}
+                    />
+                  </Link>
+                )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: "15px" }}>
-                    {item.userName && (
+                    {item.userName && !isDeletedHandle(item.userHandle) && (
                       <span
                         style={{ color: "white", fontWeight: "bold" }}
                       >
                         {item.userName}{" "}
                       </span>
                     )}
+                    {isDeletedHandle(item.userHandle) ? (
+                      <span style={{ color: "#888" }}>
+                        {DELETED_USER_LABEL}
+                      </span>
+                    ) : (
                     <Link
                       href={`/user/${item.userHandle}`}
                       style={{
@@ -410,6 +429,7 @@ export default function Home() {
                     >
                       @{item.userHandle}
                     </Link>
+                    )}
                     <span style={{ color: "#aaa" }}> reviewed </span>
                     <span style={{ color: "white", fontWeight: "bold" }}>
                       {item.show.artist}
