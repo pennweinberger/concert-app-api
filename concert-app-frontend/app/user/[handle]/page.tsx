@@ -8,6 +8,7 @@ import LikeButton from "../../components/LikeButton";
 import StarRating from "../../components/StarRating";
 import FollowButton from "../../components/FollowButton";
 import Avatar from "../../components/Avatar";
+import CommentsSection from "../../components/CommentsSection";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -18,6 +19,7 @@ type Review = {
   reviewTextRaw: string;
   publishedAt: string | null;
   likeCount: number;
+  commentCount: number;
   liked: boolean;
   show: {
     id: string;
@@ -593,6 +595,10 @@ export default function UserPage() {
                       </div>
                     </>
                   )}
+                  <CommentsSection
+                    reviewId={review.id}
+                    initialCount={review.commentCount}
+                  />
                   </div>
                 </div>
               );

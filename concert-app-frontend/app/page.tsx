@@ -37,6 +37,7 @@ type FeedItem =
       reviewTextRaw: string;
       publishedAt: string;
       likeCount: number;
+      commentCount: number;
       liked: boolean;
       show: FeedShow;
     }
@@ -466,7 +467,9 @@ export default function Home() {
                       marginTop: "12px",
                       pointerEvents: "auto",
                       position: "relative",
-                      display: "inline-block",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
                     }}
                   >
                     <LikeButton
@@ -474,6 +477,19 @@ export default function Home() {
                       initialLiked={item.liked}
                       initialLikeCount={item.likeCount}
                     />
+                    {/* Comment count navigates to the show page where the
+                        thread can be opened. Keeps /feed scannable —
+                        comments do not open inline in this phase. */}
+                    <Link
+                      href={`/show/${item.show.id}`}
+                      style={{
+                        color: "#aaa",
+                        fontSize: "13px",
+                        textDecoration: "none",
+                      }}
+                    >
+                      💬 {item.commentCount}
+                    </Link>
                   </div>
                 </div>
               </div>

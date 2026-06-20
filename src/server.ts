@@ -18,6 +18,13 @@ import {
   deletionScheduledFor,
 } from "./lib/accountLifecycle.js";
 import {
+  createComment,
+  deleteComment,
+  listComments,
+  DEFAULT_COMMENTS_LIMIT,
+  MAX_COMMENTS_LIMIT,
+} from "./lib/comments.js";
+import {
   generateTokenString,
   tokenExpiresAt,
   checkToken,
@@ -134,6 +141,7 @@ const rateLimitForgotPassword = makeRateLimit("forgot-password", 3, 60 * 60_000)
 const rateLimitResetPassword = makeRateLimit("reset-password", 10, 60_000); // 10 / min / IP
 const rateLimitRequestDelete = makeRateLimit("request-delete", 3, 60 * 60_000); // 3 / hour / IP
 const rateLimitConfirmDelete = makeRateLimit("confirm-delete", 10, 60_000); // 10 / min / IP
+const rateLimitCreateComment = makeRateLimit("create-comment", 20, 60_000); // 20 / min / IP
 
 // Catch unhandled errors and forward to Sentry (no-op if Sentry not
 // initialized). Falls through to Fastify's default error response.
@@ -1168,6 +1176,99 @@ app.delete("/reviews/:id/like", async (request, reply) => {
   }
 });
 
+// --- Review comments -------------------------------------------------------
+
+app.get("/reviews/:reviewId/comments", async (request, reply) => {
+  const { reviewId } = request.params as { reviewId: string };
+  const query = request.query as { cursor?: string; limit?: string };
+  const rawLimit = Number(query.limit);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(rawLimit, MAX_COMMENTS_LIMIT)
+      : DEFAULT_COMMENTS_LIMIT;
+  const cursor = parseCursor(query.cursor);
+
+  const result = await listComments(
+    { reviewId, limit, cursor },
+    { prisma },
+  );
+  if (!result.ok) {
+    return reply.status(404).send({ error: "Review not found" });
+  }
+  return {
+    items: result.items.map((c) => ({
+      id: c.id,
+      body: c.body,
+      createdAt: c.createdAt,
+      userHandle: c.userHandle,
+      userName: c.userName,
+      userAvatarUrl: c.userAvatarUrl,
+    })),
+    nextCursor: result.nextCursor,
+  };
+});
+
+app.post(
+  "/reviews/:reviewId/comments",
+  { preHandler: rateLimitCreateComment },
+  async (request, reply) => {
+    try {
+      await request.jwtVerify();
+    } catch {
+      return reply.status(401).send({ error: "Not authenticated" });
+    }
+    const { reviewId } = request.params as { reviewId: string };
+    const body = request.body as { body?: unknown };
+    const result = await createComment(
+      {
+        reviewId,
+        userId: request.user.userId,
+        body: typeof body.body === "string" ? body.body : "",
+      },
+      { prisma },
+    );
+    if (!result.ok) {
+      switch (result.reason) {
+        case "review_not_found":
+          return reply.status(404).send({ error: "Review not found" });
+        case "body_too_short":
+          return reply
+            .status(400)
+            .send({ error: "Comment cannot be empty", reason: "body_too_short" });
+        case "body_too_long":
+          return reply.status(400).send({
+            error: "Comment must be 2000 characters or fewer",
+            reason: "body_too_long",
+          });
+      }
+    }
+    return reply.status(201).send({ comment: result.comment });
+  },
+);
+
+app.delete(
+  "/reviews/:reviewId/comments/:commentId",
+  async (request, reply) => {
+    try {
+      await request.jwtVerify();
+    } catch {
+      return reply.status(401).send({ error: "Not authenticated" });
+    }
+    const { reviewId, commentId } = request.params as {
+      reviewId: string;
+      commentId: string;
+    };
+    const result = await deleteComment(
+      { commentId, reviewId, userId: request.user.userId },
+      { prisma },
+    );
+    if (!result.ok) {
+      return reply.status(404).send({ error: "Comment not found" });
+    }
+    return reply.status(204).send();
+  },
+);
+
 app.get("/feed", async (request, reply) => {
   const viewerId = await getOptionalUserId(request);
   const query = request.query as {
@@ -1218,7 +1319,12 @@ app.get("/feed", async (request, reply) => {
             venue: true,
           },
         },
-        _count: { select: { likes: true } },
+        _count: {
+          select: {
+            likes: true,
+            comments: { where: { moderationStatus: { not: "BLOCKED" } } },
+          },
+        },
       },
     });
 
@@ -1237,6 +1343,7 @@ app.get("/feed", async (request, reply) => {
       reviewTextRaw: review.reviewTextRaw,
       publishedAt: review.publishedAt,
       likeCount: review._count.likes,
+      commentCount: review._count.comments,
       liked: likedSet.has(review.id),
       show: {
         id: review.show.id,
@@ -1370,7 +1477,12 @@ app.get("/artists/:id", async (request, reply) => {
             venue: { select: { name: true, city: true } },
           },
         },
-        _count: { select: { likes: true } },
+        _count: {
+          select: {
+            likes: true,
+            comments: { where: { moderationStatus: { not: "BLOCKED" } } },
+          },
+        },
       },
     });
 
@@ -1398,6 +1510,7 @@ app.get("/artists/:id", async (request, reply) => {
         ratingOverall: review.ratingOverall,
         reviewTextRaw: review.reviewTextRaw,
         likeCount: review._count.likes,
+        commentCount: review._count.comments,
         liked: likedSet.has(review.id),
         show: {
           id: review.show.id,
@@ -1533,7 +1646,12 @@ app.get("/shows/:id", async (request, reply) => {
       take: limit + 1,
       include: {
         user: true,
-        _count: { select: { likes: true } },
+        _count: {
+          select: {
+            likes: true,
+            comments: { where: { moderationStatus: { not: "BLOCKED" } } },
+          },
+        },
       },
     });
 
@@ -1566,6 +1684,7 @@ app.get("/shows/:id", async (request, reply) => {
         reviewTextRaw: review.reviewTextRaw,
         publishedAt: review.publishedAt,
         likeCount: review._count.likes,
+        commentCount: review._count.comments,
         liked: likedSet.has(review.id),
       })),
       reviewsNextCursor,
@@ -1659,7 +1778,12 @@ app.get("/users/:handle", async (request, reply) => {
         show: {
           include: { artist: true, venue: true },
         },
-        _count: { select: { likes: true } },
+        _count: {
+          select: {
+            likes: true,
+            comments: { where: { moderationStatus: { not: "BLOCKED" } } },
+          },
+        },
       },
     });
 
@@ -1693,6 +1817,7 @@ app.get("/users/:handle", async (request, reply) => {
         reviewTextRaw: review.reviewTextRaw,
         publishedAt: review.publishedAt,
         likeCount: review._count.likes,
+        commentCount: review._count.comments,
         liked: likedSet.has(review.id),
         show: {
           id: review.show.id,
