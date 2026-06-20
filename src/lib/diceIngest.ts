@@ -56,10 +56,23 @@ export type DiceIngestDeps = {
   now: () => Date;
   /** Optional override for tests; defaults to DICE_NYC_VENUES. */
   seed?: DiceSeedVenue[];
+  /**
+   * Max canonical venues to process this invocation. Default 5 — safe
+   * margin under the Vercel 300s function timeout (first full-from-cold
+   * run measured ~45s per canonical venue including event processing).
+   */
+  limit?: number;
+  /**
+   * Skip canonical venues whose Venue.lastDiceFetchAt is more recent
+   * than this many hours ago. Default 6 → roughly four runs/day cover
+   * the whole seed list. Set 0 to force-refresh everything.
+   */
+  minHoursBetweenFetches?: number;
 };
 
 export type DiceRunSummary = {
   processedDiceVenues: number;
+  skippedRecentlyFetched: number;
   eventsConsidered: number;
   actions: { AUTO_MERGE: number; CREATE_NEW: number; REVIEW: number };
   errors: number;
@@ -76,8 +89,12 @@ export async function runDiceIngestion(
 ): Promise<DiceRunSummary> {
   const startMs = deps.now().getTime();
   const seed = deps.seed ?? DICE_NYC_VENUES;
+  const limit = deps.limit ?? 5;
+  const minHoursBetweenFetches = deps.minHoursBetweenFetches ?? 6;
+
   const summary: DiceRunSummary = {
     processedDiceVenues: 0,
+    skippedRecentlyFetched: 0,
     eventsConsidered: 0,
     actions: { AUTO_MERGE: 0, CREATE_NEW: 0, REVIEW: 0 },
     errors: 0,
@@ -85,7 +102,49 @@ export async function runDiceIngestion(
     durationMs: 0,
   };
 
-  outer: for (const seedVenue of seed) {
+  // Load lastDiceFetchAt for each canonical venue (by name+city) so we
+  // can sort stale-first and skip recently-fetched ones. Venues not
+  // yet in the DB return undefined and sort to the front (NULLS FIRST).
+  const canonicalKeys = seed.map((s) => ({
+    name: s.canonicalName,
+    city: s.city,
+  }));
+  const existingVenues = await deps.prisma.venue.findMany({
+    where: { OR: canonicalKeys },
+    select: { name: true, city: true, lastDiceFetchAt: true },
+  });
+  const fetchMap = new Map<string, Date | null>();
+  for (const v of existingVenues) {
+    fetchMap.set(`${v.name}|${v.city}`, v.lastDiceFetchAt);
+  }
+
+  const cutoff = new Date(
+    deps.now().getTime() - minHoursBetweenFetches * 3_600_000,
+  );
+
+  // Filter out venues fetched too recently.
+  const eligible = seed.filter((s) => {
+    const last = fetchMap.get(`${s.canonicalName}|${s.city}`);
+    if (last && last > cutoff) {
+      summary.skippedRecentlyFetched++;
+      return false;
+    }
+    return true;
+  });
+
+  // Sort stalest-first (NULLs first, then oldest lastDiceFetchAt).
+  eligible.sort((a, b) => {
+    const aF = fetchMap.get(`${a.canonicalName}|${a.city}`) ?? null;
+    const bF = fetchMap.get(`${b.canonicalName}|${b.city}`) ?? null;
+    if (!aF && !bF) return 0;
+    if (!aF) return -1;
+    if (!bF) return 1;
+    return aF.getTime() - bF.getTime();
+  });
+
+  const toProcess = eligible.slice(0, limit);
+
+  outer: for (const seedVenue of toProcess) {
     let canonicalVenueId: string | null = null;
 
     for (const diceShortId of seedVenue.diceShortIds) {

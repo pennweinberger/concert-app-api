@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { applyDiceDecision } from "./diceIngest.js";
+import { applyDiceDecision, runDiceIngestion } from "./diceIngest.js";
 import type { MatchDecision } from "./providerMatch.js";
 import type { DiceMusicEvent } from "./diceParse.js";
+import type { DiceSeedVenue } from "./diceVenues.js";
 
 const fixedNow = new Date("2026-06-20T12:00:00.000Z");
 const localDate = new Date("2026-06-20T00:00:00.000Z");
@@ -285,5 +286,104 @@ describe("applyDiceDecision — CREATE_NEW", () => {
         makeDeps(setup.prisma),
       ),
     ).rejects.toThrow(/venueId mismatch/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runDiceIngestion — sort/limit/skip behavior (chunking)
+// ---------------------------------------------------------------------------
+
+describe("runDiceIngestion — chunking", () => {
+  const seed: DiceSeedVenue[] = [
+    { canonicalName: "Venue A", city: "Brooklyn", diceShortIds: ["aaa"] },
+    { canonicalName: "Venue B", city: "Brooklyn", diceShortIds: ["bbb"] },
+    { canonicalName: "Venue C", city: "Brooklyn", diceShortIds: ["ccc"] },
+    { canonicalName: "Venue D", city: "Brooklyn", diceShortIds: ["ddd"] },
+  ];
+
+  function makeRunSetup() {
+    const findVenues = vi.fn();
+    const updateVenue = vi.fn().mockResolvedValue({});
+    const fetched: string[] = [];
+    const fetchVenuePageHtml = vi.fn(async (shortId: string) => {
+      fetched.push(shortId);
+      // Return HTML with a Place JSON-LD but zero events — keeps the
+      // orchestrator quick and avoids exercising the per-event pipeline.
+      return `<script type="application/ld+json">${JSON.stringify({
+        "@type": "Place",
+        name: "x",
+        address: "Street, Brooklyn, NY 11211, USA",
+        event: [],
+      })}</script>`;
+    });
+    const findManyArtists = vi.fn().mockResolvedValue([]);
+    const findManyShows = vi.fn().mockResolvedValue([]);
+    return {
+      fetched,
+      prisma: {
+        venue: { findMany: findVenues, update: updateVenue },
+        artist: { findMany: findManyArtists },
+        show: { findMany: findManyShows },
+      } as unknown as import("@prisma/client").PrismaClient,
+      mocks: { findVenues, updateVenue, fetchVenuePageHtml },
+    };
+  }
+
+  it("first run from cold state (all NULL lastDiceFetchAt): processes the first `limit` venues in seed order", async () => {
+    const s = makeRunSetup();
+    s.mocks.findVenues.mockResolvedValueOnce([]); // no venues in DB yet
+    const summary = await runDiceIngestion({
+      prisma: s.prisma,
+      fetchVenuePageHtml: s.mocks.fetchVenuePageHtml,
+      now: () => new Date("2026-06-20T18:00:00.000Z"),
+      seed,
+      limit: 2,
+    });
+    expect(summary.processedDiceVenues).toBe(2);
+    expect(summary.skippedRecentlyFetched).toBe(0);
+    expect(s.fetched).toEqual(["aaa", "bbb"]);
+  });
+
+  it("skips venues fetched within minHoursBetweenFetches, processes the stalest", async () => {
+    const s = makeRunSetup();
+    const now = new Date("2026-06-20T18:00:00.000Z");
+    // A fetched 1h ago (skip), B fetched 12h ago (eligible, stale),
+    // C never fetched (eligible, NULL → stalest)
+    // D fetched 8h ago (eligible)
+    s.mocks.findVenues.mockResolvedValueOnce([
+      { name: "Venue A", city: "Brooklyn", lastDiceFetchAt: new Date(now.getTime() - 1 * 3_600_000) },
+      { name: "Venue B", city: "Brooklyn", lastDiceFetchAt: new Date(now.getTime() - 12 * 3_600_000) },
+      { name: "Venue D", city: "Brooklyn", lastDiceFetchAt: new Date(now.getTime() - 8 * 3_600_000) },
+    ]);
+    const summary = await runDiceIngestion({
+      prisma: s.prisma,
+      fetchVenuePageHtml: s.mocks.fetchVenuePageHtml,
+      now: () => now,
+      seed,
+      limit: 5,
+      minHoursBetweenFetches: 6,
+    });
+    expect(summary.skippedRecentlyFetched).toBe(1); // A
+    // Order should be: C (NULL/stalest), B (12h), D (8h). A is skipped.
+    expect(s.fetched).toEqual(["ccc", "bbb", "ddd"]);
+  });
+
+  it("force-refresh with minHoursBetweenFetches=0 processes everything regardless of recency", async () => {
+    const s = makeRunSetup();
+    const now = new Date("2026-06-20T18:00:00.000Z");
+    s.mocks.findVenues.mockResolvedValueOnce([
+      { name: "Venue A", city: "Brooklyn", lastDiceFetchAt: new Date(now.getTime() - 60_000) },
+      { name: "Venue B", city: "Brooklyn", lastDiceFetchAt: new Date(now.getTime() - 60_000) },
+    ]);
+    const summary = await runDiceIngestion({
+      prisma: s.prisma,
+      fetchVenuePageHtml: s.mocks.fetchVenuePageHtml,
+      now: () => now,
+      seed: seed.slice(0, 2),
+      limit: 5,
+      minHoursBetweenFetches: 0,
+    });
+    expect(summary.skippedRecentlyFetched).toBe(0);
+    expect(summary.processedDiceVenues).toBe(2);
   });
 });
