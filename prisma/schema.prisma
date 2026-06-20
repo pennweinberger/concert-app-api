@@ -89,6 +89,8 @@ model Venue {
   shows                Show[]
   externalRefs         VenueExternalRef[]
   providerMatchReviews ProviderMatchReview[]
+
+  @@unique([name, city])
 }
 
 model VenueExternalRef {
