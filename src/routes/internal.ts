@@ -105,11 +105,30 @@ export function registerInternalRoutes(
       if (!auth || auth !== `Bearer ${cronSecret}`) {
         return reply.status(401).send({ error: "Unauthorized" });
       }
+      // Optional operator-control query params:
+      //   ?limit=N                  override per-run venue cap
+      //   ?minHoursBetweenFetches=N override recency skip (0 = force)
+      const q = request.query as {
+        limit?: string;
+        minHoursBetweenFetches?: string;
+      };
+      const parseNonNegInt = (raw: string | undefined): number | undefined => {
+        if (raw === undefined) return undefined;
+        const n = Number(raw);
+        return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
+      };
+      const limit = parseNonNegInt(q.limit);
+      const minHoursBetweenFetches = parseNonNegInt(q.minHoursBetweenFetches);
+
       try {
         const summary = await runDiceIngestion({
           prisma,
           fetchVenuePageHtml,
           now: () => new Date(),
+          ...(limit !== undefined ? { limit } : {}),
+          ...(minHoursBetweenFetches !== undefined
+            ? { minHoursBetweenFetches }
+            : {}),
         });
         return reply.status(200).send(summary);
       } catch (err: any) {

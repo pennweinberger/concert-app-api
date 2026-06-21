@@ -449,14 +449,42 @@ describe("decideMatchAction (orchestration)", () => {
     expect(d.candidateShowIds).toEqual(["s_at_v_a"]);
   });
 
-  it("REVIEW: missing MBID drops artist to PROBABLE", () => {
+  it("AUTO_MERGE (promoted): artist name-match-no-mbid + venue EXACT + show EXACT", () => {
+    // Name-only artist match is normally PROBABLE → REVIEW. But when
+    // venue is EXACT and show is EXACT, the corroborating signals
+    // make the artist match unambiguous → promote to AUTO_MERGE.
+    // Without this, providers that lack stable artist ids (DICE)
+    // would never auto-merge.
     const d = decideMatchAction(
       {
         confidence: "PROBABLE",
         artistId: "a",
         reason: "name_match_no_mbid",
       },
-      { confidence: "EXACT", venueId: "v", reason: "external_ref_match" },
+      { confidence: "EXACT", venueId: "v", reason: "dice_external_ref_match" },
+      {
+        confidence: "EXACT",
+        showId: "s",
+        candidateShowIds: [],
+        reason: "exact_match",
+      }
+    );
+    expect(d.action).toBe("AUTO_MERGE");
+    expect(d.artistId).toBe("a");
+    expect(d.venueId).toBe("v");
+    expect(d.showId).toBe("s");
+  });
+
+  it("REVIEW (not promoted): artist PROBABLE name_match_no_mbid but venue is PROBABLE (not EXACT)", () => {
+    // Promotion only fires when BOTH venue and show are EXACT. Here
+    // venue is PROBABLE so the safety net holds: REVIEW.
+    const d = decideMatchAction(
+      {
+        confidence: "PROBABLE",
+        artistId: "a",
+        reason: "name_match_no_mbid",
+      },
+      { confidence: "PROBABLE", venueId: "v", reason: "venue_name_city_match" },
       {
         confidence: "EXACT",
         showId: "s",
@@ -466,6 +494,47 @@ describe("decideMatchAction (orchestration)", () => {
     );
     expect(d.action).toBe("REVIEW");
     expect(d.showId).toBeNull();
+  });
+
+  it("REVIEW (not promoted): artist PROBABLE name_match_no_mbid but show is NEW (no exact match)", () => {
+    // Show NEW means no existing canonical show to merge onto. The
+    // promotion is specifically for the case where we'd be attaching
+    // a provider ref to an already-known canonical show.
+    const d = decideMatchAction(
+      {
+        confidence: "PROBABLE",
+        artistId: "a",
+        reason: "name_match_no_mbid",
+      },
+      { confidence: "EXACT", venueId: "v", reason: "dice_external_ref_match" },
+      {
+        confidence: "NEW",
+        showId: null,
+        candidateShowIds: [],
+        reason: "no_show_match",
+      }
+    );
+    expect(d.action).toBe("REVIEW");
+  });
+
+  it("REVIEW (not promoted): artist PROBABLE with a non-promotable reason (e.g. fuzzy match)", () => {
+    // The promotion clause checks reason === "name_match_no_mbid"
+    // specifically. Other PROBABLE reasons (if any) are NOT promoted.
+    const d = decideMatchAction(
+      {
+        confidence: "PROBABLE",
+        artistId: "a",
+        reason: "some_other_probable_reason",
+      },
+      { confidence: "EXACT", venueId: "v", reason: "dice_external_ref_match" },
+      {
+        confidence: "EXACT",
+        showId: "s",
+        candidateShowIds: [],
+        reason: "exact_match",
+      }
+    );
+    expect(d.action).toBe("REVIEW");
   });
 
   it("REVIEW: multiple venue candidates", () => {

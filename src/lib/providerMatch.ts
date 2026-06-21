@@ -449,10 +449,40 @@ export function decideMatchAction(
     };
   }
 
-  // All three EXACT → AUTO_MERGE. This is the ONLY path that mutates
-  // an existing canonical Show.
+  // All three EXACT → AUTO_MERGE. This is the cleanest auto-merge
+  // path — every signal is definitive.
   if (
     artist.confidence === "EXACT" &&
+    venue.confidence === "EXACT" &&
+    show.confidence === "EXACT"
+  ) {
+    return {
+      action: "AUTO_MERGE",
+      artistId: artist.artistId,
+      venueId: venue.venueId,
+      showId: show.showId,
+      candidateShowIds: [],
+      reason: reasons,
+    };
+  }
+
+  // Promoted AUTO_MERGE: artist is name-match-only PROBABLE (the
+  // "no-MBID" case), BUT venue is EXACT and show is EXACT. The
+  // corroborating venue + show signals make the name-only artist
+  // match unambiguous — promote to AUTO_MERGE rather than route to
+  // REVIEW.
+  //
+  // Why this matters: providers that don't expose stable artist ids
+  // (DICE) would otherwise NEVER auto-merge — every event would land
+  // in REVIEW even when artist+venue+date are identical to an existing
+  // canonical show. That defeats cross-provider dedup.
+  //
+  // Reason gate: we only promote the specific PROBABLE reason
+  // "name_match_no_mbid" (single exact-name candidate, no tribute
+  // conflict). Fuzzy matches and other PROBABLEs are NOT promoted.
+  if (
+    artist.confidence === "PROBABLE" &&
+    artist.reason === "name_match_no_mbid" &&
     venue.confidence === "EXACT" &&
     show.confidence === "EXACT"
   ) {
