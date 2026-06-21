@@ -85,6 +85,14 @@ describe("parseDiceHeadliner", () => {
     ["Hayley Williams", "Hayley Williams"],
     // Parenthetical annotation
     ["Eli Escobar (Open To Close)", "Eli Escobar"],
+    // " | " brand/promoter suffix separator (DICE-specific convention)
+    ["Black Coffee | Pacha NY Opening Weekend", "Black Coffee"],
+    ["DJ Foo | Series Tag | Edition 3", "DJ Foo"],
+    // " @ Venue" suffix (DICE staples venue name to headliner sometimes)
+    ["Loud Luxury @ Pacha New York", "Loud Luxury"],
+    ["Bob Moses @ Brooklyn Paramount", "Bob Moses"],
+    // Combination: " @ Venue" followed by " | series" → both stripped
+    ["Black Coffee @ Pacha New York | Opening Weekend", "Black Coffee"],
   ])("'%s' → '%s'", (input, expected) => {
     expect(parseDiceHeadliner(input)).toBe(expected);
   });

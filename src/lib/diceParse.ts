@@ -34,6 +34,12 @@ const STRIP_PARENS = /\s*\([^)]*\)\s*/g;
 const LEADING_BRAND_PREFIX = /^([^,:]{1,25}):\s+/;
 const PRESENTS_RE = /\s+presents:?\s+/i;
 const ROOM_SPLITTER = /\s+\/\s+/;
+const PIPE_SPLITTER = /\s+\|\s+/;
+// DICE sometimes staples a venue name to the headliner with " @ "
+// (e.g., "Loud Luxury @ Pacha New York"). Strip from the FIRST " @ "
+// onward — common case has exactly one " @ " and everything after is
+// venue/event branding, not artist names.
+const AT_VENUE_SUFFIX = /\s+@\s+.+$/;
 const BY_SPLITTER = /\s+by\s+/i;
 const WITH_SPLITTER = /\s+with\s+/i;
 
@@ -49,26 +55,38 @@ export function parseDiceHeadliner(eventName: string): string {
   s = s.replace(STRIP_BRACKETS, " ").replace(STRIP_PARENS, " ");
   s = s.replace(/\s+/g, " ").trim();
 
-  // 2. " / " separates rooms or set blocks; take the first.
+  // 2. Strip " @ Venue" suffix patterns. Do this BEFORE other splitters
+  //    so the suffix doesn't get carried into downstream logic.
+  s = s.replace(AT_VENUE_SUFFIX, "").trim();
+
+  // 3. " | " is DICE's brand/promoter suffix separator
+  //    (e.g., "Black Coffee | Pacha NY Opening Weekend"). Take the
+  //    first segment — it's the headliner; the rest is series/edition
+  //    branding.
+  if (PIPE_SPLITTER.test(s)) {
+    s = s.split(PIPE_SPLITTER)[0]!.trim();
+  }
+
+  // 4. " / " separates rooms or set blocks; take the first.
   if (ROOM_SPLITTER.test(s)) {
     s = s.split(ROOM_SPLITTER)[0]!.trim();
   }
 
-  // 3. "X presents Y" / "X presents: Y" — take the part AFTER presents
+  // 5. "X presents Y" / "X presents: Y" — take the part AFTER presents
   //    (Y is the artist; X is the promoter).
   if (PRESENTS_RE.test(s)) {
     const parts = s.split(PRESENTS_RE);
     s = parts[parts.length - 1]!.trim();
   }
 
-  // 4. "X by Y" — take what comes AFTER the last "by" (Y is the artist
+  // 6. "X by Y" — take what comes AFTER the last "by" (Y is the artist
   //    performing X).
   if (BY_SPLITTER.test(s)) {
     const parts = s.split(BY_SPLITTER);
     s = parts[parts.length - 1]!.trim();
   }
 
-  // 5. Leading brand-prefix "Brand: artist list" — only strip if the
+  // 7. Leading brand-prefix "Brand: artist list" — only strip if the
   //    prefix is short and contains no comma (so we don't accidentally
   //    strip a long artist list that happens to contain a colon).
   const brand = LEADING_BRAND_PREFIX.exec(s);
@@ -76,12 +94,12 @@ export function parseDiceHeadliner(eventName: string): string {
     s = s.slice(brand[0]!.length).trim();
   }
 
-  // 6. " with " — separates headliner from support; take what's BEFORE.
+  // 8. " with " — separates headliner from support; take what's BEFORE.
   if (WITH_SPLITTER.test(s)) {
     s = s.split(WITH_SPLITTER)[0]!.trim();
   }
 
-  // 7. Comma-separated lineup — take the first entry as headliner.
+  // 9. Comma-separated lineup — take the first entry as headliner.
   if (s.includes(",")) {
     s = s.split(",")[0]!.trim();
   }
