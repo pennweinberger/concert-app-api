@@ -17,6 +17,8 @@ type UserSearchResult = {
   name: string | null;
   avatarUrl: string | null;
   followerCount: number;
+  reviewCount: number;
+  attendedShowCount: number;
   isFollowing: boolean;
 };
 
@@ -166,6 +168,18 @@ export default function PeoplePage() {
                     {u.name}
                   </div>
                 )}
+                <div
+                  style={{
+                    color: "#888",
+                    fontSize: "13px",
+                    marginTop: "2px",
+                  }}
+                >
+                  {u.reviewCount} review{u.reviewCount === 1 ? "" : "s"}
+                  {" • "}
+                  {u.attendedShowCount} show
+                  {u.attendedShowCount === 1 ? "" : "s"}
+                </div>
               </div>
             </Link>
             <FollowButton

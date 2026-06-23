@@ -1786,7 +1786,9 @@ app.get("/users/search", async (request, reply) => {
       handle: true,
       name: true,
       avatarUrl: true,
-      _count: { select: { followers: true } },
+      _count: {
+        select: { followers: true, reviews: true, attendances: true },
+      },
       ...(viewerId
         ? {
             followers: {
@@ -1807,6 +1809,11 @@ app.get("/users/search", async (request, reply) => {
       name: u.name,
       avatarUrl: u.avatarUrl,
       followerCount: u._count.followers,
+      reviewCount: u._count.reviews,
+      // One Attendance row per (user, show) pair, so this is also the
+      // distinct-show count — matches the "shows attended" displayed on
+      // /user/:handle.
+      attendedShowCount: u._count.attendances,
       isFollowing: viewerId
         ? Array.isArray((u as { followers?: unknown[] }).followers) &&
           (u as { followers: unknown[] }).followers.length > 0
