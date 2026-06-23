@@ -102,11 +102,48 @@ export default function NewReviewPage() {
     setSearching(true);
     setError(null);
     try {
-      const res = await fetch(
-        `${API_BASE}/shows/search?q=${encodeURIComponent(query.trim())}`,
+      const trimmed = query.trim();
+      // Parallel fetch: internal DB (DICE / TM-confirmed / etc.) + live
+      // Ticketmaster. DB rows are authoritative — list them first and
+      // suppress any TM duplicates by (artist|venue|city|date).
+      //
+      // FUTURE CLEANUP: this parallel-fetch + merge + dedupe pattern is
+      // duplicated from app/components/ShowSearch.tsx. Extract a shared
+      // useShowSearch hook in app/lib/ next time we touch either file
+      // (see [[future-cleanup]] memory entry).
+      const [dbRes, tmRes] = await Promise.all([
+        fetch(`${API_BASE}/shows?q=${encodeURIComponent(trimmed)}&limit=20`),
+        fetch(`${API_BASE}/shows/search?q=${encodeURIComponent(trimmed)}`),
+      ]);
+      const dbData = dbRes.ok ? await dbRes.json() : { items: [] };
+      const tmData = tmRes.ok ? await tmRes.json() : { items: [] };
+
+      const dbItems: ShowSearchResult[] = (dbData.items ?? []).map(
+        (i: any) => ({
+          provider: "internal",
+          providerEventId: i.id,
+          artist: i.artist?.name ?? "",
+          venue: i.venue?.name ?? "",
+          city: i.venue?.city ?? "",
+          // /shows?q= returns ISO datetime; the rest of this flow expects
+          // YYYY-MM-DD. Slice to match the ?showId= preload path above.
+          localDate: String(i.localDate ?? "").split("T")[0] ?? "",
+          ticketUrl: "",
+        }),
       );
-      const data = await res.json();
-      setResults(data.items || []);
+      const tmItems: ShowSearchResult[] = (tmData.items ?? []).filter(
+        (i: any) =>
+          typeof i.artist === "string" &&
+          typeof i.venue === "string" &&
+          typeof i.localDate === "string",
+      );
+
+      const dedupeKey = (r: ShowSearchResult) =>
+        [r.artist, r.venue, r.city, r.localDate].join("|").toLowerCase();
+      const dbKeys = new Set(dbItems.map(dedupeKey));
+      const filteredTm = tmItems.filter((t) => !dbKeys.has(dedupeKey(t)));
+
+      setResults([...dbItems, ...filteredTm]);
       setSearched(true);
     } catch {
       setError("Search failed. Try again.");
@@ -117,6 +154,13 @@ export default function NewReviewPage() {
 
   function selectShow(show: ShowSearchResult) {
     setSelectedShow(show);
+    // DB-sourced rows already exist as a Show — skip the round-trip
+    // through /shows/confirm by setting preloadedShowId, which the
+    // submit() path branches on at line ~148. Mirrors the ?showId=
+    // preload behavior at the top of this file.
+    if (show.provider === "internal") {
+      setPreloadedShowId(show.providerEventId);
+    }
     // Don't clear results — user might want to "Change show" and revisit.
   }
 
