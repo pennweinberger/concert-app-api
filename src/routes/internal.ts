@@ -5,6 +5,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { PrismaClient } from "@prisma/client";
+import * as Sentry from "@sentry/node";
 import { runIngestion } from "../lib/setlistfmIngest.js";
 import { searchSetlistsByArtistMbid } from "../lib/setlistfm.js";
 import { cleanupAccountDeletions } from "../lib/accountLifecycle.js";
@@ -91,53 +92,66 @@ export function registerInternalRoutes(
   // DICE_INGEST_ENABLED on every fetch (returns DiceDisabledError when
   // missing); the route-level check below short-circuits cheaply
   // before we even authenticate the bearer.
-  app.post(
-    "/internal/ingest/dice",
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const cronSecret = process.env.CRON_SECRET;
-      const diceEnabled = process.env.DICE_INGEST_ENABLED === "true";
-      if (!cronSecret || !diceEnabled) {
-        return reply
-          .status(503)
-          .send({ error: "DICE ingestion not configured" });
-      }
-      const auth = request.headers["authorization"];
-      if (!auth || auth !== `Bearer ${cronSecret}`) {
-        return reply.status(401).send({ error: "Unauthorized" });
-      }
-      // Optional operator-control query params:
-      //   ?limit=N                  override per-run venue cap
-      //   ?minHoursBetweenFetches=N override recency skip (0 = force)
-      const q = request.query as {
-        limit?: string;
-        minHoursBetweenFetches?: string;
-      };
-      const parseNonNegInt = (raw: string | undefined): number | undefined => {
-        if (raw === undefined) return undefined;
-        const n = Number(raw);
-        return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
-      };
-      const limit = parseNonNegInt(q.limit);
-      const minHoursBetweenFetches = parseNonNegInt(q.minHoursBetweenFetches);
+  //
+  // Both POST and GET hit the same handler. POST is for manual triggers
+  // (curl, ops scripts); GET is for Vercel Cron, which only fires GET
+  // requests. The CRON_SECRET bearer gate is what keeps GET safe to use
+  // on a side-effectful endpoint — without the secret, both methods
+  // return 401.
+  const handleDiceIngest = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
+    const cronSecret = process.env.CRON_SECRET;
+    const diceEnabled = process.env.DICE_INGEST_ENABLED === "true";
+    if (!cronSecret || !diceEnabled) {
+      return reply
+        .status(503)
+        .send({ error: "DICE ingestion not configured" });
+    }
+    const auth = request.headers["authorization"];
+    if (!auth || auth !== `Bearer ${cronSecret}`) {
+      return reply.status(401).send({ error: "Unauthorized" });
+    }
+    // Optional operator-control query params:
+    //   ?limit=N                  override per-run venue cap
+    //   ?minHoursBetweenFetches=N override recency skip (0 = force)
+    const q = request.query as {
+      limit?: string;
+      minHoursBetweenFetches?: string;
+    };
+    const parseNonNegInt = (raw: string | undefined): number | undefined => {
+      if (raw === undefined) return undefined;
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
+    };
+    const limit = parseNonNegInt(q.limit);
+    const minHoursBetweenFetches = parseNonNegInt(q.minHoursBetweenFetches);
 
-      try {
-        const summary = await runDiceIngestion({
-          prisma,
-          fetchVenuePageHtml,
-          now: () => new Date(),
-          ...(limit !== undefined ? { limit } : {}),
-          ...(minHoursBetweenFetches !== undefined
-            ? { minHoursBetweenFetches }
-            : {}),
-        });
-        return reply.status(200).send(summary);
-      } catch (err: any) {
-        app.log.error(err);
-        return reply.status(500).send({
-          error: "DICE ingestion failed",
-          details: err?.message || String(err),
-        });
-      }
-    },
-  );
+    try {
+      const summary = await runDiceIngestion({
+        prisma,
+        fetchVenuePageHtml,
+        now: () => new Date(),
+        ...(limit !== undefined ? { limit } : {}),
+        ...(minHoursBetweenFetches !== undefined
+          ? { minHoursBetweenFetches }
+          : {}),
+      });
+      return reply.status(200).send(summary);
+    } catch (err: any) {
+      // Caught errors don't reach the global Fastify error handler that
+      // forwards to Sentry — so we capture explicitly here. Without this,
+      // scheduled cron failures would be invisible in Sentry.
+      app.log.error(err);
+      Sentry.captureException(err);
+      return reply.status(500).send({
+        error: "DICE ingestion failed",
+        details: err?.message || String(err),
+      });
+    }
+  };
+
+  app.post("/internal/ingest/dice", handleDiceIngest);
+  app.get("/internal/ingest/dice", handleDiceIngest);
 }
