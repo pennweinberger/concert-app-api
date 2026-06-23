@@ -1759,6 +1759,62 @@ app.get("/shows/:id", async (request, reply) => {
   }
 });
 
+// User search. Auth-optional: signed-in viewers get isFollowing per row
+// and are excluded from their own results. Soft-deleted/anonymized users
+// are excluded. Limit 20, no pagination.
+//
+// Registered before /users/:handle: Fastify's radix router prefers
+// literal segments over params, but keeping source order aligned avoids
+// confusion.
+app.get("/users/search", async (request, reply) => {
+  const q = ((request.query as { q?: string }).q ?? "").trim();
+  if (q.length < 2) return reply.status(200).send({ items: [] });
+
+  const viewerId = await getOptionalUserId(request);
+
+  const users = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      anonymizedAt: null,
+      ...(viewerId ? { NOT: { id: viewerId } } : {}),
+      OR: [
+        { handle: { contains: q, mode: "insensitive" } },
+        { name: { contains: q, mode: "insensitive" } },
+      ],
+    },
+    select: {
+      handle: true,
+      name: true,
+      avatarUrl: true,
+      _count: { select: { followers: true } },
+      ...(viewerId
+        ? {
+            followers: {
+              where: { followerId: viewerId },
+              select: { id: true },
+              take: 1,
+            },
+          }
+        : {}),
+    },
+    take: 20,
+    orderBy: [{ handle: "asc" }],
+  });
+
+  return reply.status(200).send({
+    items: users.map((u) => ({
+      handle: u.handle,
+      name: u.name,
+      avatarUrl: u.avatarUrl,
+      followerCount: u._count.followers,
+      isFollowing: viewerId
+        ? Array.isArray((u as { followers?: unknown[] }).followers) &&
+          (u as { followers: unknown[] }).followers.length > 0
+        : false,
+    })),
+  });
+});
+
 app.get("/users/:handle", async (request, reply) => {
   const { handle } = request.params as { handle: string };
   const viewerId = await getOptionalUserId(request);

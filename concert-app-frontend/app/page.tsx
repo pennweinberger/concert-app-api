@@ -144,6 +144,17 @@ export default function Home() {
           {authUser ? (
             <>
               <Link
+                href="/people"
+                style={{
+                  color: "#f4f1ea",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "3px",
+                }}
+              >
+                Find Users
+              </Link>
+              <span style={{ color: "#444" }}>·</span>
+              <Link
                 href={`/user/${authUser.handle}`}
                 style={{
                   color: "#f4f1ea",
