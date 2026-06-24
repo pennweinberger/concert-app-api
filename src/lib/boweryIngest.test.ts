@@ -235,7 +235,11 @@ function makeIngestPrisma() {
       upsert: vi.fn().mockResolvedValue({}),
     },
     show: { findMany: vi.fn().mockResolvedValue([]) },
-    showExternalRef: { upsert: vi.fn().mockResolvedValue({}) },
+    showExternalRef: {
+      // findMany used by the pre-fetch skip-already-processed optimization.
+      findMany: vi.fn().mockResolvedValue([]),
+      upsert: vi.fn().mockResolvedValue({}),
+    },
     providerMatchReview: { upsert: vi.fn().mockResolvedValue({}) },
     $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
       const tx = {
@@ -356,6 +360,44 @@ describe("runBoweryIngestion", () => {
     expect((prisma.venue.upsert as any)).not.toHaveBeenCalled();
     expect((prisma.showExternalRef.upsert as any)).not.toHaveBeenCalled();
     expect((prisma.$transaction as any)).not.toHaveBeenCalled();
+  });
+
+  it("skips already-processed events on re-runs (cheap path)", async () => {
+    const feed = makeFeedResponse([
+      rawEvent({ eventId: "already_done" }),
+      rawEvent({ eventId: "new_event" }),
+    ]);
+    const prisma = makeIngestPrisma();
+    // Pre-fetch returns one of the two events as already-ingested.
+    (prisma.showExternalRef.findMany as any).mockResolvedValue([
+      { providerEventId: "already_done" },
+    ]);
+    const summary = await runBoweryIngestion({
+      prisma,
+      fetchBoweryFeed: vi.fn().mockResolvedValue(feed),
+      now: () => fixedNow,
+    });
+    expect(summary.skippedAlreadyProcessed).toBe(1);
+    expect(summary.eventsProcessed).toBe(1);
+    // The pre-fetch happened once with the allowed event IDs.
+    const prefetchCall = (prisma.showExternalRef.findMany as any).mock.calls[0]![0];
+    expect(prefetchCall.where.provider).toBe("bowery");
+    expect(prefetchCall.where.providerEventId.in).toEqual([
+      "already_done",
+      "new_event",
+    ]);
+  });
+
+  it("dry-run does NOT pre-fetch (avoids unnecessary DB hit)", async () => {
+    const feed = makeFeedResponse([rawEvent()]);
+    const prisma = makeIngestPrisma();
+    await runBoweryIngestion({
+      prisma,
+      fetchBoweryFeed: vi.fn().mockResolvedValue(feed),
+      now: () => fixedNow,
+      dryRun: true,
+    });
+    expect((prisma.showExternalRef.findMany as any)).not.toHaveBeenCalled();
   });
 
   it("returns feed etag + lastModified in summary for observability", async () => {

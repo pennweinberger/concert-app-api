@@ -63,6 +63,9 @@ export type BoweryRunSummary = {
   skippedNonAllowlistVenue: number;
   skippedNonNyState: number;
   skippedInactive: { total: number; byReason: Record<SkipReason, number> };
+  /** Events whose ShowExternalRef(provider='bowery') already exists —
+   * skipped to keep re-runs cheap under Vercel's 300s function timeout. */
+  skippedAlreadyProcessed: number;
   eventsProcessed: number;
   actions: { AUTO_MERGE: number; CREATE_NEW: number; REVIEW: number };
   errors: number;
@@ -89,6 +92,7 @@ function freshSummary(): BoweryRunSummary {
         private: 0,
       },
     },
+    skippedAlreadyProcessed: 0,
     eventsProcessed: 0,
     actions: { AUTO_MERGE: 0, CREATE_NEW: 0, REVIEW: 0 },
     errors: 0,
@@ -144,7 +148,34 @@ export async function runBoweryIngestion(
   summary.feedTotalReported = parsed.totalReported;
   summary.feedEventsParsed = parsed.events.length;
 
-  // 3. Per-event pipeline.
+  // 3. Pre-fetch the set of eventIds we have already ingested. Skipping
+  //    these on re-runs is the difference between a 5+ minute run and
+  //    a sub-second one — without this, each "already done" event still
+  //    costs a Vercel→Supabase round-trip for the no-op upsert. The
+  //    fetch is bounded to allowlisted+NY events in this feed so it
+  //    stays small even if the feed grows.
+  const allowedEventIds: string[] = [];
+  for (const ev of parsed.events) {
+    if (
+      isAllowlistedVenueId(ev.venue.venueId) &&
+      ev.venue.state === "NY"
+    ) {
+      allowedEventIds.push(ev.eventId);
+    }
+  }
+  let alreadyProcessed: Set<string> = new Set();
+  if (!deps.dryRun && allowedEventIds.length > 0) {
+    const existing = await deps.prisma.showExternalRef.findMany({
+      where: {
+        provider: PROVIDER,
+        providerEventId: { in: allowedEventIds },
+      },
+      select: { providerEventId: true },
+    });
+    alreadyProcessed = new Set(existing.map((r) => r.providerEventId));
+  }
+
+  // 4. Per-event pipeline.
   for (const ev of parsed.events) {
     // Allowlist filter — by venueId (the primary key for venue identity
     // in the feed). Non-allowlist events are silently dropped; their
@@ -166,6 +197,14 @@ export async function runBoweryIngestion(
     if (skip) {
       summary.skippedInactive.total++;
       summary.skippedInactive.byReason[skip]++;
+      continue;
+    }
+
+    // Already-processed events get the cheap path. v1 does not refresh
+    // rawPayload for these; that's future work if we ever need to
+    // propagate updated metadata into existing rows.
+    if (!deps.dryRun && alreadyProcessed.has(ev.eventId)) {
+      summary.skippedAlreadyProcessed++;
       continue;
     }
 
