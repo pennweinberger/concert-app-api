@@ -15,10 +15,24 @@ export type BoweryAllowlistEntry = {
   venueId: string;
   /** Feed venue.title — exact spelling. Used for diagnostics. */
   title: string;
+  /**
+   * Optional per-venue feed id. Only set when the venue's events are
+   * NOT fully represented in the regional /events/59/ feed (e.g.,
+   * multi-promoter venues like Forest Hills Stadium). Skipping the
+   * per-venue fetch for venues where the regional feed is canonical
+   * saves an HTTP roundtrip per cron run.
+   */
+  perVenueFeedId?: string;
 };
 
 export const BOWERY_NYC_ALLOWLIST: BoweryAllowlistEntry[] = [
-  { venueId: "124944", title: "Forest Hills Stadium" },
+  // Forest Hills is multi-promoter — supplement the regional feed with
+  // /events/58/ which is the venue's complete calendar (includes shows
+  // promoted by Live Nation, Madison House, etc. — e.g., the Hayley
+  // Williams Show is in /events/58/ but NOT in /events/59/).
+  { venueId: "124944", title: "Forest Hills Stadium", perVenueFeedId: "58" },
+  // Bowery Presents primary venues — regional feed is canonical (their
+  // own pages on bowerypresents.com point at /events/59/ themselves).
   { venueId: "125705", title: "Terminal 5" },
   { venueId: "101385", title: "Webster Hall" },
   { venueId: "128735", title: "Racket" },

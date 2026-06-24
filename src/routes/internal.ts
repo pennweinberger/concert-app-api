@@ -12,7 +12,7 @@ import { cleanupAccountDeletions } from "../lib/accountLifecycle.js";
 import { runDiceIngestion } from "../lib/diceIngest.js";
 import { fetchVenuePageHtml } from "../lib/dice.js";
 import { runBoweryIngestion } from "../lib/boweryIngest.js";
-import { fetchBoweryFeed } from "../lib/bowery.js";
+import { fetchBoweryFeed, fetchBoweryPerVenueFeed } from "../lib/bowery.js";
 
 export function registerInternalRoutes(
   app: FastifyInstance,
@@ -187,6 +187,7 @@ export function registerInternalRoutes(
       const summary = await runBoweryIngestion({
         prisma,
         fetchBoweryFeed,
+        fetchBoweryPerVenueFeed,
         now: () => new Date(),
         dryRun,
       });

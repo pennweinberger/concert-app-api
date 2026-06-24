@@ -32,7 +32,7 @@ import {
   type BoweryEvent,
   type SkipReason,
 } from "./boweryParse.js";
-import { isAllowlistedVenueId } from "./boweryVenues.js";
+import { isAllowlistedVenueId, BOWERY_NYC_ALLOWLIST } from "./boweryVenues.js";
 import { resolveArtist as upsertArtist } from "./showResolution.js";
 import {
   resolveArtist as matchArtist,
@@ -51,6 +51,13 @@ const PROVIDER = "bowery";
 export type BoweryIngestDeps = {
   prisma: PrismaClient;
   fetchBoweryFeed: () => Promise<BoweryFeedResponse>;
+  /**
+   * Per-venue feed fetcher for allowlist entries that carry a
+   * perVenueFeedId (currently only Forest Hills Stadium). The
+   * orchestrator merges these with the regional feed, deduplicating
+   * by eventId.
+   */
+  fetchBoweryPerVenueFeed: (perVenueFeedId: string) => Promise<BoweryFeedResponse>;
   now: () => Date;
   /** When true, parse + filter but skip every DB write. */
   dryRun?: boolean;
@@ -59,6 +66,9 @@ export type BoweryIngestDeps = {
 export type BoweryRunSummary = {
   feedTotalReported: number;
   feedEventsParsed: number;
+  /** Events added from per-venue feeds that were NOT in the regional
+   * feed (e.g., multi-promoter shows at Forest Hills). */
+  perVenueExtras: number;
   allowlistMatched: number;
   skippedNonAllowlistVenue: number;
   skippedNonNyState: number;
@@ -79,6 +89,7 @@ function freshSummary(): BoweryRunSummary {
   return {
     feedTotalReported: 0,
     feedEventsParsed: 0,
+    perVenueExtras: 0,
     allowlistMatched: 0,
     skippedNonAllowlistVenue: 0,
     skippedNonNyState: 0,
@@ -148,14 +159,51 @@ export async function runBoweryIngestion(
   summary.feedTotalReported = parsed.totalReported;
   summary.feedEventsParsed = parsed.events.length;
 
+  // 2b. Supplement with per-venue feeds for allowlisted venues whose
+  //     events are NOT fully represented in the regional feed (currently
+  //     just Forest Hills — see boweryVenues.ts). Each per-venue fetch
+  //     adds the events the regional feed missed, deduplicated by
+  //     eventId. A per-venue fetch failure is logged + Sentry'd but
+  //     does NOT fail the run; the regional feed is still processed.
+  const regionalEventIds = new Set(parsed.events.map((e) => e.eventId));
+  const mergedEvents: BoweryEvent[] = [...parsed.events];
+  for (const entry of BOWERY_NYC_ALLOWLIST) {
+    if (!entry.perVenueFeedId) continue;
+    try {
+      const pvResp = await deps.fetchBoweryPerVenueFeed(entry.perVenueFeedId);
+      const pvParsed = parseBoweryFeed(pvResp.rawJson);
+      for (const ev of pvParsed.events) {
+        if (regionalEventIds.has(ev.eventId)) continue;
+        // Defense in depth: the per-venue feed could include events at
+        // OTHER venues if the feed is loosely scoped. Only accept events
+        // whose venueId matches the allowlist entry.
+        if (ev.venue.venueId !== entry.venueId) continue;
+        mergedEvents.push(ev);
+        regionalEventIds.add(ev.eventId);
+        summary.perVenueExtras++;
+      }
+    } catch (e) {
+      console.error(
+        `bowery ingest: per-venue feed fetch failed for ${entry.title} (id=${entry.perVenueFeedId})`,
+        e,
+      );
+      Sentry.captureException(e, {
+        tags: {
+          provider: "bowery",
+          perVenueFeedId: entry.perVenueFeedId,
+        },
+      });
+    }
+  }
+
   // 3. Pre-fetch the set of eventIds we have already ingested. Skipping
   //    these on re-runs is the difference between a 5+ minute run and
   //    a sub-second one — without this, each "already done" event still
   //    costs a Vercel→Supabase round-trip for the no-op upsert. The
-  //    fetch is bounded to allowlisted+NY events in this feed so it
-  //    stays small even if the feed grows.
+  //    fetch is bounded to allowlisted+NY events in the merged set so
+  //    it stays small even if the feeds grow.
   const allowedEventIds: string[] = [];
-  for (const ev of parsed.events) {
+  for (const ev of mergedEvents) {
     if (
       isAllowlistedVenueId(ev.venue.venueId) &&
       ev.venue.state === "NY"
@@ -176,7 +224,7 @@ export async function runBoweryIngestion(
   }
 
   // 4. Per-event pipeline.
-  for (const ev of parsed.events) {
+  for (const ev of mergedEvents) {
     // Allowlist filter — by venueId (the primary key for venue identity
     // in the feed). Non-allowlist events are silently dropped; their
     // count is summarized.

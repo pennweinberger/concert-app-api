@@ -10,6 +10,8 @@
 
 const FEED_URL =
   "https://aegwebprod.blob.core.windows.net/json/events/59/events.json";
+const PER_VENUE_FEED_BASE =
+  "https://aegwebprod.blob.core.windows.net/json/events/";
 const USER_AGENT =
   "Afterset-IngestionBot/1.0 (+https://afterset-pied.vercel.app/bot)";
 
@@ -39,10 +41,32 @@ export type BoweryFeedResponse = {
 };
 
 export async function fetchBoweryFeed(): Promise<BoweryFeedResponse> {
+  return fetchUrl(FEED_URL);
+}
+
+// Per-venue feeds carry venue-specific events that may not appear in the
+// regional feed. Concrete case: Forest Hills Stadium is multi-promoter
+// (Live Nation, AEG Presents, Madison House, etc.); its per-venue feed
+// /events/58/ has events the Bowery-only regional feed /events/59/ omits.
+// Pure Bowery-Presents venues (Brooklyn Steel, MHoW, Terminal 5, Webster
+// Hall) point at the regional feed from their own pages, so they don't
+// need this supplement.
+export async function fetchBoweryPerVenueFeed(
+  perVenueFeedId: string,
+): Promise<BoweryFeedResponse> {
+  if (!/^[0-9]+$/.test(perVenueFeedId)) {
+    throw new BoweryFetchError(
+      `Invalid per-venue feed id: ${perVenueFeedId}`,
+    );
+  }
+  return fetchUrl(`${PER_VENUE_FEED_BASE}${perVenueFeedId}/events.json`);
+}
+
+async function fetchUrl(url: string): Promise<BoweryFeedResponse> {
   if (process.env.BOWERY_INGEST_ENABLED !== "true") {
     throw new BoweryDisabledError();
   }
-  const res = await fetch(FEED_URL, {
+  const res = await fetch(url, {
     headers: {
       "User-Agent": USER_AGENT,
       Accept: "application/json",
@@ -51,7 +75,7 @@ export async function fetchBoweryFeed(): Promise<BoweryFeedResponse> {
   if (!res.ok) {
     const body = await res.text();
     throw new BoweryFetchError(
-      `Bowery feed ${res.status}: ${body.slice(0, 200)}`,
+      `Bowery feed ${res.status} (${url}): ${body.slice(0, 200)}`,
       res.status,
     );
   }

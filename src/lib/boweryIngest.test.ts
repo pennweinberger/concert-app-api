@@ -273,6 +273,11 @@ describe("runBoweryIngestion", () => {
     const summary = await runBoweryIngestion({
       prisma: makeIngestPrisma(),
       fetchBoweryFeed: vi.fn().mockResolvedValue(feed),
+      fetchBoweryPerVenueFeed: vi.fn().mockResolvedValue({
+        rawJson: { meta: { total: 0 }, events: [] },
+        etag: null,
+        lastModified: null,
+      }),
       now: () => fixedNow,
     });
     expect(summary.feedEventsParsed).toBe(2);
@@ -290,6 +295,11 @@ describe("runBoweryIngestion", () => {
     const summary = await runBoweryIngestion({
       prisma: makeIngestPrisma(),
       fetchBoweryFeed: vi.fn().mockResolvedValue(feed),
+      fetchBoweryPerVenueFeed: vi.fn().mockResolvedValue({
+        rawJson: { meta: { total: 0 }, events: [] },
+        etag: null,
+        lastModified: null,
+      }),
       now: () => fixedNow,
     });
     expect(summary.allowlistMatched).toBe(1);
@@ -309,6 +319,11 @@ describe("runBoweryIngestion", () => {
     const summary = await runBoweryIngestion({
       prisma: makeIngestPrisma(),
       fetchBoweryFeed: vi.fn().mockResolvedValue(feed),
+      fetchBoweryPerVenueFeed: vi.fn().mockResolvedValue({
+        rawJson: { meta: { total: 0 }, events: [] },
+        etag: null,
+        lastModified: null,
+      }),
       now: () => fixedNow,
     });
     expect(summary.skippedInactive.byReason.postponed).toBe(1);
@@ -337,6 +352,11 @@ describe("runBoweryIngestion", () => {
     const summary = await runBoweryIngestion({
       prisma: makeIngestPrisma(),
       fetchBoweryFeed: vi.fn().mockResolvedValue(feed),
+      fetchBoweryPerVenueFeed: vi.fn().mockResolvedValue({
+        rawJson: { meta: { total: 0 }, events: [] },
+        etag: null,
+        lastModified: null,
+      }),
       now: () => fixedNow,
     });
     expect(summary.allowlistMatched).toBe(1);
@@ -350,6 +370,11 @@ describe("runBoweryIngestion", () => {
     const summary = await runBoweryIngestion({
       prisma,
       fetchBoweryFeed: vi.fn().mockResolvedValue(feed),
+      fetchBoweryPerVenueFeed: vi.fn().mockResolvedValue({
+        rawJson: { meta: { total: 0 }, events: [] },
+        etag: null,
+        lastModified: null,
+      }),
       now: () => fixedNow,
       dryRun: true,
     });
@@ -375,6 +400,11 @@ describe("runBoweryIngestion", () => {
     const summary = await runBoweryIngestion({
       prisma,
       fetchBoweryFeed: vi.fn().mockResolvedValue(feed),
+      fetchBoweryPerVenueFeed: vi.fn().mockResolvedValue({
+        rawJson: { meta: { total: 0 }, events: [] },
+        etag: null,
+        lastModified: null,
+      }),
       now: () => fixedNow,
     });
     expect(summary.skippedAlreadyProcessed).toBe(1);
@@ -394,10 +424,101 @@ describe("runBoweryIngestion", () => {
     await runBoweryIngestion({
       prisma,
       fetchBoweryFeed: vi.fn().mockResolvedValue(feed),
+      fetchBoweryPerVenueFeed: vi.fn().mockResolvedValue({
+        rawJson: { meta: { total: 0 }, events: [] },
+        etag: null,
+        lastModified: null,
+      }),
       now: () => fixedNow,
       dryRun: true,
     });
     expect((prisma.showExternalRef.findMany as any)).not.toHaveBeenCalled();
+  });
+
+  it("merges per-venue feed extras (Forest Hills supplement)", async () => {
+    // Regional has Paul Simon at Forest Hills. Per-venue has BOTH Paul
+    // Simon (same eventId, dedup) AND Hayley Williams (new — only in
+    // per-venue). Expect: Hayley counted as perVenueExtras, Paul Simon
+    // not double-counted.
+    const paulSimonRegional = rawEvent({
+      eventId: "1210894",
+      title: {
+        headlinersText: "Paul Simon",
+        supportingText: null,
+        tour: null,
+        eventTitleText: "Paul Simon",
+      },
+    });
+    const paulSimonPerVenue = rawEvent({
+      eventId: "1210894", // same id — duplicate, must be deduped
+      title: {
+        headlinersText: "Paul Simon",
+        supportingText: null,
+        tour: null,
+        eventTitleText: "Paul Simon",
+      },
+    });
+    const hayleyPerVenue = rawEvent({
+      eventId: "1416004",
+      eventDateTimeISO: "2026-09-16T18:00:00-04:00",
+      title: {
+        headlinersText: '"The Hayley Williams Show"',
+        supportingText: null,
+        tour: null,
+        eventTitleText: '"The Hayley Williams Show"',
+      },
+    });
+
+    const summary = await runBoweryIngestion({
+      prisma: makeIngestPrisma(),
+      fetchBoweryFeed: vi.fn().mockResolvedValue(makeFeedResponse([paulSimonRegional])),
+      fetchBoweryPerVenueFeed: vi.fn().mockResolvedValue(
+        makeFeedResponse([paulSimonPerVenue, hayleyPerVenue]),
+      ),
+      now: () => fixedNow,
+    });
+
+    expect(summary.feedEventsParsed).toBe(1); // regional had 1
+    expect(summary.perVenueExtras).toBe(1); // Hayley was the only new one
+    expect(summary.allowlistMatched).toBe(2); // both end up processed
+    expect(summary.eventsProcessed).toBe(2);
+  });
+
+  it("per-venue feed failure does NOT fail the whole run", async () => {
+    const summary = await runBoweryIngestion({
+      prisma: makeIngestPrisma(),
+      fetchBoweryFeed: vi.fn().mockResolvedValue(makeFeedResponse([rawEvent()])),
+      fetchBoweryPerVenueFeed: vi.fn().mockRejectedValue(new Error("network nope")),
+      now: () => fixedNow,
+    });
+    expect(summary.allowlistMatched).toBe(1);
+    expect(summary.perVenueExtras).toBe(0);
+    expect(summary.eventsProcessed).toBe(1);
+  });
+
+  it("per-venue defense in depth: rejects events whose venueId does not match the allowlist entry", async () => {
+    // A misbehaving per-venue feed could return an event at a DIFFERENT
+    // venue (124944 = Forest Hills allowlist; 99999 = unknown). We must
+    // not merge it in just because it came from a per-venue fetch.
+    const wrongVenue = rawEvent({
+      eventId: "wrong_venue",
+      venue: {
+        venueId: "99999",
+        title: "Some Other Place",
+        city: "Brooklyn",
+        state: "NY",
+        address_line: null,
+        timezone: "America/New_York",
+      },
+    });
+    const summary = await runBoweryIngestion({
+      prisma: makeIngestPrisma(),
+      fetchBoweryFeed: vi.fn().mockResolvedValue(makeFeedResponse([])),
+      fetchBoweryPerVenueFeed: vi.fn().mockResolvedValue(makeFeedResponse([wrongVenue])),
+      now: () => fixedNow,
+    });
+    expect(summary.perVenueExtras).toBe(0);
+    expect(summary.allowlistMatched).toBe(0);
   });
 
   it("returns feed etag + lastModified in summary for observability", async () => {
@@ -405,6 +526,11 @@ describe("runBoweryIngestion", () => {
     const summary = await runBoweryIngestion({
       prisma: makeIngestPrisma(),
       fetchBoweryFeed: vi.fn().mockResolvedValue(feed),
+      fetchBoweryPerVenueFeed: vi.fn().mockResolvedValue({
+        rawJson: { meta: { total: 0 }, events: [] },
+        etag: null,
+        lastModified: null,
+      }),
       now: () => fixedNow,
       dryRun: true,
     });
