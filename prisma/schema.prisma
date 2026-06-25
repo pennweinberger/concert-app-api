@@ -246,3 +246,22 @@ model ReviewComment {
   @@index([reviewId, createdAt])
   @@index([userId])
 }
+
+// Audit log: one row per ingestion execution (DICE / Bowery), created
+// by the route-level withIngestRun wrapper. Answers "did ingestion run
+// today, what happened, did it fail?" — works even for no-op runs.
+// A row stuck at status="running" with a stale startedAt is the signal
+// for a timed-out or killed run (e.g., the Vercel 300s function limit).
+model IngestRun {
+  id         String    @id @default(cuid())
+  provider   String                          // "dice" | "bowery"
+  status     String    @default("running")   // "running" | "success" | "error"
+  trigger    String                          // "cron" | "manual"
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+  summary    Json?                           // orchestrator run summary
+  error      String?                         // set when status="error"
+
+  @@index([provider, startedAt])
+}

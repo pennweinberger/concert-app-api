@@ -13,6 +13,7 @@ import { runDiceIngestion } from "../lib/diceIngest.js";
 import { fetchVenuePageHtml } from "../lib/dice.js";
 import { runBoweryIngestion } from "../lib/boweryIngest.js";
 import { fetchBoweryFeed, fetchBoweryPerVenueFeed } from "../lib/bowery.js";
+import { withIngestRun, detectTrigger } from "../lib/ingestRun.js";
 
 export function registerInternalRoutes(
   app: FastifyInstance,
@@ -131,15 +132,19 @@ export function registerInternalRoutes(
     const minHoursBetweenFetches = parseNonNegInt(q.minHoursBetweenFetches);
 
     try {
-      const summary = await runDiceIngestion({
-        prisma,
-        fetchVenuePageHtml,
-        now: () => new Date(),
-        ...(limit !== undefined ? { limit } : {}),
-        ...(minHoursBetweenFetches !== undefined
-          ? { minHoursBetweenFetches }
-          : {}),
-      });
+      const summary = await withIngestRun(
+        { prisma, provider: "dice", trigger: detectTrigger(request.headers) },
+        () =>
+          runDiceIngestion({
+            prisma,
+            fetchVenuePageHtml,
+            now: () => new Date(),
+            ...(limit !== undefined ? { limit } : {}),
+            ...(minHoursBetweenFetches !== undefined
+              ? { minHoursBetweenFetches }
+              : {}),
+          }),
+      );
       return reply.status(200).send(summary);
     } catch (err: any) {
       // Caught errors don't reach the global Fastify error handler that
@@ -184,13 +189,17 @@ export function registerInternalRoutes(
     const dryRun = q.dryRun === "true" || q.dryRun === "1";
 
     try {
-      const summary = await runBoweryIngestion({
-        prisma,
-        fetchBoweryFeed,
-        fetchBoweryPerVenueFeed,
-        now: () => new Date(),
-        dryRun,
-      });
+      const summary = await withIngestRun(
+        { prisma, provider: "bowery", trigger: detectTrigger(request.headers) },
+        () =>
+          runBoweryIngestion({
+            prisma,
+            fetchBoweryFeed,
+            fetchBoweryPerVenueFeed,
+            now: () => new Date(),
+            dryRun,
+          }),
+      );
       return reply.status(200).send(summary);
     } catch (err: any) {
       app.log.error(err);
