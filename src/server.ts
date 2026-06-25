@@ -211,6 +211,42 @@ async function getOptionalUserId(
   }
 }
 
+// Requires a valid JWT AND a verified email. On failure it sends the
+// response (401 not-authenticated / 403 email-not-verified) and returns
+// null — callers must `if (!userId) return;`. Gates content-producing
+// actions (review, comment, like, follow) so unverified accounts — the
+// cheap bot/spam vector — can't post. We check emailVerifiedAt against
+// the DB rather than trusting the JWT, because tokens are long-lived
+// (30d) and a user who verifies mid-token must not stay locked out.
+async function requireVerifiedUserId(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<string | null> {
+  try {
+    await request.jwtVerify();
+  } catch {
+    reply.status(401).send({ error: "Not authenticated" });
+    return null;
+  }
+  const { userId } = request.user;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { emailVerifiedAt: true },
+  });
+  if (!user) {
+    reply.status(401).send({ error: "Not authenticated" });
+    return null;
+  }
+  if (!user.emailVerifiedAt) {
+    reply.status(403).send({
+      error: "Please verify your email before posting.",
+      reason: "email_not_verified",
+    });
+    return null;
+  }
+  return userId;
+}
+
 // --- Pagination helpers ----------------------------------------------------
 
 const DEFAULT_PAGE_LIMIT = 20;
@@ -1010,13 +1046,8 @@ app.get(
 );
 
 app.post("/reviews", async (request, reply) => {
-  try {
-    await request.jwtVerify();
-  } catch {
-    return reply.status(401).send({ error: "Not authenticated" });
-  }
-
-  const { userId } = request.user;
+  const userId = await requireVerifiedUserId(request, reply);
+  if (!userId) return;
 
   const body = request.body as {
     showId?: unknown;
@@ -1185,13 +1216,8 @@ app.delete("/reviews/:id", async (request, reply) => {
 });
 
 app.post("/reviews/:id/like", async (request, reply) => {
-  try {
-    await request.jwtVerify();
-  } catch {
-    return reply.status(401).send({ error: "Not authenticated" });
-  }
-
-  const { userId } = request.user;
+  const userId = await requireVerifiedUserId(request, reply);
+  if (!userId) return;
   const { id: reviewId } = request.params as { id: string };
 
   // Confirm the review exists (so we can't like a phantom). We need
@@ -1310,17 +1336,14 @@ app.post(
   "/reviews/:reviewId/comments",
   { preHandler: rateLimitCreateComment },
   async (request, reply) => {
-    try {
-      await request.jwtVerify();
-    } catch {
-      return reply.status(401).send({ error: "Not authenticated" });
-    }
+    const userId = await requireVerifiedUserId(request, reply);
+    if (!userId) return;
     const { reviewId } = request.params as { reviewId: string };
     const body = request.body as { body?: unknown };
     const result = await createComment(
       {
         reviewId,
-        userId: request.user.userId,
+        userId,
         body: typeof body.body === "string" ? body.body : "",
       },
       { prisma },
@@ -2107,13 +2130,8 @@ app.patch("/users/me", async (request, reply) => {
 });
 
 app.post("/users/:handle/follow", async (request, reply) => {
-  try {
-    await request.jwtVerify();
-  } catch {
-    return reply.status(401).send({ error: "Not authenticated" });
-  }
-
-  const { userId: followerId } = request.user;
+  const followerId = await requireVerifiedUserId(request, reply);
+  if (!followerId) return;
   const { handle } = request.params as { handle: string };
 
   const target = await prisma.user.findUnique({ where: { handle } });
