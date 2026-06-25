@@ -35,6 +35,9 @@ model User {
 
   following Follow[] @relation("UserFollowing")
   followers Follow[] @relation("UserFollowers")
+
+  notificationsReceived Notification[] @relation("NotificationsReceived")
+  notificationsActed    Notification[] @relation("NotificationsActed")
 }
 
 model VerificationToken {
@@ -264,4 +267,27 @@ model IngestRun {
   error      String?                         // set when status="error"
 
   @@index([provider, startedAt])
+}
+
+// In-app notifications. Generic by design: `type` is a string (not an
+// enum) and `entityId` + `metadata` carry type-specific payload, so new
+// notification types ship without a schema change. v1 types: "follow",
+// "review_like", "review_comment". Created best-effort by the
+// createNotification helper AFTER the primary action commits — a failed
+// notification never rolls back the like/comment/follow it describes.
+model Notification {
+  id              String    @id @default(cuid())
+  recipientUserId String
+  actorUserId     String?                       // who triggered it; nullable for future system notifications
+  type            String                        // "follow" | "review_like" | "review_comment"
+  entityId        String?                       // reviewId / commentId / follower id, by type
+  metadata        Json?
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  recipient       User      @relation("NotificationsReceived", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  actor           User?     @relation("NotificationsActed", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([recipientUserId, createdAt])          // newest-first list
+  @@index([recipientUserId, readAt])             // unread badge count
 }

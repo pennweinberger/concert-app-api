@@ -45,7 +45,17 @@ export type CreatedComment = {
 };
 
 export type CreateCommentResult =
-  | { ok: true; comment: CreatedComment }
+  | {
+      ok: true;
+      comment: CreatedComment;
+      /** Author of the review being commented on — the notification
+       *  recipient. Surfaced here so the route can fire a best-effort
+       *  notification without re-querying the review. */
+      reviewAuthorUserId: string;
+      /** Show the review belongs to — lets the notification deep-link
+       *  to the show page where the review renders. */
+      reviewShowId: string;
+    }
   | {
       ok: false;
       reason: "review_not_found" | "body_too_short" | "body_too_long";
@@ -65,7 +75,7 @@ export async function createComment(
 
   const review = await deps.prisma.review.findUnique({
     where: { id: input.reviewId },
-    select: { id: true },
+    select: { id: true, userId: true, showId: true },
   });
   if (!review) {
     return { ok: false, reason: "review_not_found" };
@@ -84,6 +94,8 @@ export async function createComment(
 
   return {
     ok: true,
+    reviewAuthorUserId: review.userId,
+    reviewShowId: review.showId,
     comment: {
       id: created.id,
       reviewId: created.reviewId,

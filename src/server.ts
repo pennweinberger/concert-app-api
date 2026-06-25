@@ -25,6 +25,13 @@ import {
   MAX_COMMENTS_LIMIT,
 } from "./lib/comments.js";
 import {
+  createNotification,
+  listNotifications,
+  NotificationType,
+  DEFAULT_NOTIFICATIONS_LIMIT,
+  MAX_NOTIFICATIONS_LIMIT,
+} from "./lib/notifications.js";
+import {
   searchShows,
   DEFAULT_SHOW_SEARCH_LIMIT,
   MAX_SHOW_SEARCH_LIMIT,
@@ -1187,20 +1194,50 @@ app.post("/reviews/:id/like", async (request, reply) => {
   const { userId } = request.user;
   const { id: reviewId } = request.params as { id: string };
 
-  // Confirm the review exists (so we can't like a phantom).
-  const review = await prisma.review.findUnique({ where: { id: reviewId } });
+  // Confirm the review exists (so we can't like a phantom). We need
+  // the author (userId) to notify them of a new like.
+  const review = await prisma.review.findUnique({
+    where: { id: reviewId },
+    select: { id: true, userId: true, showId: true },
+  });
   if (!review) {
     return reply.status(404).send({ error: "Review not found" });
   }
 
   try {
-    // Idempotent: composite unique on (userId, reviewId) means we can
-    // safely upsert. If already liked, this is a no-op.
-    await prisma.reviewLike.upsert({
-      where: { userId_reviewId: { userId, reviewId } },
-      create: { userId, reviewId },
-      update: {},
-    });
+    // Idempotent via the (userId, reviewId) unique constraint, but we
+    // need to know whether THIS call created a new like (vs. a repeat)
+    // so we only notify once. create-or-catch-P2002 gives that
+    // definitively and race-safely; an upsert would hide it.
+    let isNewLike = false;
+    try {
+      await prisma.reviewLike.create({ data: { userId, reviewId } });
+      isNewLike = true;
+    } catch (e: any) {
+      if (e?.code === "P2002") {
+        isNewLike = false; // already liked — no-op, no notification
+      } else {
+        throw e;
+      }
+    }
+
+    // Notify the review author of a genuinely new like. Best-effort:
+    // createNotification self-guards (no-op if author liked own review)
+    // and never throws.
+    if (isNewLike) {
+      await createNotification(
+        {
+          recipientUserId: review.userId,
+          actorUserId: userId,
+          type: NotificationType.REVIEW_LIKE,
+          entityId: reviewId,
+          // showId lets the UI deep-link to the show page where the
+          // review renders (there is no standalone /review/:id route).
+          metadata: { showId: review.showId },
+        },
+        { prisma },
+      );
+    }
 
     const likeCount = await prisma.reviewLike.count({ where: { reviewId } });
     return { liked: true, likeCount };
@@ -1303,6 +1340,21 @@ app.post(
           });
       }
     }
+
+    // Notify the review author of a new comment. Best-effort + self-
+    // guarded; entityId is the reviewId so the recipient lands on the
+    // review, commentId rides along in metadata.
+    await createNotification(
+      {
+        recipientUserId: result.reviewAuthorUserId,
+        actorUserId: request.user.userId,
+        type: NotificationType.REVIEW_COMMENT,
+        entityId: result.comment.reviewId,
+        metadata: { showId: result.reviewShowId, commentId: result.comment.id },
+      },
+      { prisma },
+    );
+
     return reply.status(201).send({ comment: result.comment });
   },
 );
@@ -2073,13 +2125,35 @@ app.post("/users/:handle/follow", async (request, reply) => {
   }
 
   try {
-    await prisma.follow.upsert({
-      where: {
-        followerId_followingId: { followerId, followingId: target.id },
-      },
-      create: { followerId, followingId: target.id },
-      update: {},
-    });
+    // create-or-catch-P2002 (not upsert) so we know whether this is a
+    // genuinely new follow and notify only once. Self-follow is already
+    // blocked above.
+    let isNewFollow = false;
+    try {
+      await prisma.follow.create({
+        data: { followerId, followingId: target.id },
+      });
+      isNewFollow = true;
+    } catch (e: any) {
+      if (e?.code === "P2002") {
+        isNewFollow = false; // already following — no-op, no notification
+      } else {
+        throw e;
+      }
+    }
+
+    if (isNewFollow) {
+      await createNotification(
+        {
+          recipientUserId: target.id,
+          actorUserId: followerId,
+          type: NotificationType.FOLLOW,
+          entityId: followerId,
+        },
+        { prisma },
+      );
+    }
+
     const followerCount = await prisma.follow.count({
       where: { followingId: target.id },
     });
@@ -2122,6 +2196,105 @@ app.delete("/users/:handle/follow", async (request, reply) => {
       error: "Failed to unfollow",
       details: err?.message || String(err),
     });
+  }
+});
+
+// --- Notifications ---------------------------------------------------------
+
+app.get("/notifications", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+  const { userId } = request.user;
+  const query = request.query as { cursor?: string; limit?: string };
+  const rawLimit = Number(query.limit);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(rawLimit, MAX_NOTIFICATIONS_LIMIT)
+      : DEFAULT_NOTIFICATIONS_LIMIT;
+  const cursor = parseCursor(query.cursor);
+
+  try {
+    const result = await listNotifications(
+      { recipientUserId: userId, limit, cursor },
+      { prisma },
+    );
+    return reply.status(200).send(result);
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({
+      error: "Failed to load notifications",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+// Lightweight badge endpoint — the header bell renders on every page and
+// only needs the count, not the full list.
+app.get("/notifications/unread-count", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+  const { userId } = request.user;
+  try {
+    const count = await prisma.notification.count({
+      where: { recipientUserId: userId, readAt: null },
+    });
+    return reply.status(200).send({ count });
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({ error: "Failed to count notifications" });
+  }
+});
+
+app.post("/notifications/read", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+  const { userId } = request.user;
+  const body = request.body as { id?: unknown };
+  const id = typeof body?.id === "string" ? body.id : "";
+  if (!id) {
+    return reply.status(400).send({ error: "id is required" });
+  }
+  try {
+    // Scope the update to the caller so one user can't mark another's
+    // notification read. updateMany returns count 0 if not theirs /
+    // not found — we report success either way (idempotent).
+    const now = new Date();
+    const result = await prisma.notification.updateMany({
+      where: { id, recipientUserId: userId, readAt: null },
+      data: { readAt: now },
+    });
+    return reply.status(200).send({ updated: result.count });
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({ error: "Failed to mark read" });
+  }
+});
+
+app.post("/notifications/read-all", async (request, reply) => {
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Not authenticated" });
+  }
+  const { userId } = request.user;
+  try {
+    const result = await prisma.notification.updateMany({
+      where: { recipientUserId: userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return reply.status(200).send({ updated: result.count });
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({ error: "Failed to mark all read" });
   }
 });
 

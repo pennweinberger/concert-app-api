@@ -103,7 +103,10 @@ describe("createComment", () => {
   });
 
   it("happy path: persists then returns shape with author handle/name/avatar", async () => {
-    setup.mocks.findReviewUnique.mockResolvedValueOnce({ id: "r1" });
+    setup.mocks.findReviewUnique.mockResolvedValueOnce({
+      id: "r1",
+      userId: "review_author",
+    });
     setup.mocks.createReviewComment.mockResolvedValueOnce({
       id: "c_id",
       reviewId: "r1",
@@ -123,6 +126,8 @@ describe("createComment", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
+      // The review author is surfaced for the notification trigger.
+      expect(result.reviewAuthorUserId).toBe("review_author");
       expect(result.comment).toEqual({
         id: "c_id",
         reviewId: "r1",

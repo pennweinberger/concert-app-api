@@ -9,6 +9,7 @@ import LikeButton from "./components/LikeButton";
 import StarRating from "./components/StarRating";
 import Avatar from "./components/Avatar";
 import ShowSearch from "./components/ShowSearch";
+import NotificationBell from "./components/NotificationBell";
 
 type FeedScope = "all" | "following";
 
@@ -143,6 +144,8 @@ export default function Home() {
         >
           {authUser ? (
             <>
+              <NotificationBell />
+              <span style={{ color: "#444" }}>·</span>
               <Link
                 href="/people"
                 style={{
