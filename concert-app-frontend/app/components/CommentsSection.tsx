@@ -10,6 +10,7 @@ import {
 } from "../lib/auth";
 import { isDeletedHandle, DELETED_USER_LABEL } from "../lib/displayUser";
 import ReportMenu from "./ReportMenu";
+import VerifyToPublishModal from "./VerifyToPublishModal";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -45,6 +46,7 @@ export default function CommentsSection({ reviewId, initialCount }: Props) {
   const [composer, setComposer] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showVerify, setShowVerify] = useState(false);
   // Two-step delete confirmation: holds the comment id that is currently
   // awaiting confirmation. Clicking "Delete" sets it; clicking "Confirm"
   // performs the delete; clicking "Cancel" or hitting "Delete" on a
@@ -133,6 +135,12 @@ export default function CommentsSection({ reviewId, initialCount }: Props) {
         },
       );
       const data = await res.json().catch(() => ({}));
+      if (res.status === 403 && data?.reason === "email_not_verified") {
+        // Draft stays in `composer` — show the verify nudge and let them
+        // retry once verified without retyping.
+        setShowVerify(true);
+        return;
+      }
       if (!res.ok) {
         setError(
           (data?.error as string | undefined) ||
@@ -176,6 +184,13 @@ export default function CommentsSection({ reviewId, initialCount }: Props) {
 
   return (
     <div style={{ marginTop: "12px" }}>
+      <VerifyToPublishModal
+        open={showVerify}
+        kind="comment"
+        onClose={() => setShowVerify(false)}
+        onRetry={() => submit()}
+        retrying={submitting}
+      />
       <button
         onClick={toggle}
         style={{

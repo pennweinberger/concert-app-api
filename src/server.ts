@@ -229,7 +229,12 @@ async function getOptionalUserId(
 // cheap bot/spam vector — can't post. We check emailVerifiedAt against
 // the DB rather than trusting the JWT, because tokens are long-lived
 // (30d) and a user who verifies mid-token must not stay locked out.
-async function requireVerifiedUserId(
+// Requires a valid JWT and a NON-SUSPENDED account — but NOT a verified
+// email. This is the gate for member actions that unverified users are
+// allowed to take: like, follow, file report, and edit an existing
+// review. Removals (unlike, unfollow, delete own content) intentionally
+// skip this so a suspended user can still clean up after themselves.
+async function requireActiveUserId(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<string | null> {
@@ -242,42 +247,45 @@ async function requireVerifiedUserId(
   const { userId } = request.user;
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { emailVerifiedAt: true },
+    select: { suspendedAt: true },
   });
   if (!user) {
     reply.status(401).send({ error: "Not authenticated" });
     return null;
   }
-  if (!user.emailVerifiedAt) {
+  if (user.suspendedAt) {
     reply.status(403).send({
-      error: "Please verify your email before posting.",
-      reason: "email_not_verified",
+      error: "Your account is suspended.",
+      reason: "account_suspended",
     });
     return null;
   }
   return userId;
 }
 
-// Requires a verified user (via requireVerifiedUserId) who is ALSO not
-// suspended. This is the gate for every additive member action — create/
-// edit review, comment, like, follow, file report. Enforcing suspension
-// in one shared place keeps it consistent instead of per-endpoint.
-// Removals (unlike, unfollow, delete own content) intentionally do NOT
-// use this, so a suspended user can still clean up after themselves.
-async function requireActiveUserId(
+// Requires an active (non-suspended) user who has ALSO verified their
+// email. Gates ONLY content PUBLICATION — create review, create comment.
+// Everything else (browse, search, follow, like, notifications) stays
+// open to unverified users to maximize activation; verification is the
+// anti-spam gate on posting only. Checked against the DB (not the JWT),
+// so a user who verifies mid-session is unblocked on their next attempt
+// without re-logging-in. Suspension is checked first (via
+// requireActiveUserId), so a suspended user gets account_suspended
+// rather than the verify-your-email flow.
+async function requireVerifiedActiveUserId(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<string | null> {
-  const userId = await requireVerifiedUserId(request, reply);
-  if (!userId) return null; // response already sent (401 / 403 verified)
+  const userId = await requireActiveUserId(request, reply);
+  if (!userId) return null; // 401 / 403 account_suspended already sent
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { suspendedAt: true },
+    select: { emailVerifiedAt: true },
   });
-  if (user?.suspendedAt) {
+  if (!user?.emailVerifiedAt) {
     reply.status(403).send({
-      error: "Your account is suspended.",
-      reason: "account_suspended",
+      error: "Verify your email to publish reviews and comments.",
+      reason: "email_not_verified",
     });
     return null;
   }
@@ -1112,7 +1120,7 @@ app.get(
 );
 
 app.post("/reviews", async (request, reply) => {
-  const userId = await requireActiveUserId(request, reply);
+  const userId = await requireVerifiedActiveUserId(request, reply);
   if (!userId) return;
 
   const body = request.body as {
@@ -1399,7 +1407,7 @@ app.post(
   "/reviews/:reviewId/comments",
   { preHandler: rateLimitCreateComment },
   async (request, reply) => {
-    const userId = await requireActiveUserId(request, reply);
+    const userId = await requireVerifiedActiveUserId(request, reply);
     if (!userId) return;
     const { reviewId } = request.params as { reviewId: string };
     const body = request.body as { body?: unknown };

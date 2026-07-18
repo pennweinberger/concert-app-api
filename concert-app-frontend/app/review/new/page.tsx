@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getToken, useAuthUser } from "../../lib/auth";
+import VerifyToPublishModal from "../../components/VerifyToPublishModal";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -57,6 +58,7 @@ export default function NewReviewPage() {
   // Submit state
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showVerify, setShowVerify] = useState(false);
 
   // Pre-fill from ?showId=X. Reading window.location.search directly so
   // we don't need useSearchParams (which would require a Suspense
@@ -255,6 +257,24 @@ export default function NewReviewPage() {
         return;
       }
 
+      if (res.status === 403) {
+        const data = await res.json().catch(() => ({}));
+        if (data.reason === "email_not_verified") {
+          // Everything they wrote (selectedShow, rating, reviewText) stays
+          // in state — show the verify nudge and let them retry.
+          setShowVerify(true);
+          setSubmitting(false);
+          return;
+        }
+        setError(
+          data.reason === "account_suspended"
+            ? "Your account is suspended."
+            : `Could not post review (HTTP ${res.status}).`,
+        );
+        setSubmitting(false);
+        return;
+      }
+
       if (!res.ok) {
         setError(
           wantsReview
@@ -297,6 +317,13 @@ export default function NewReviewPage() {
         padding: "24px",
       }}
     >
+      <VerifyToPublishModal
+        open={showVerify}
+        kind="review"
+        onClose={() => setShowVerify(false)}
+        onRetry={() => submit()}
+        retrying={submitting}
+      />
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
         <div style={{ marginBottom: "20px" }}>
           <Link
