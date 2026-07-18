@@ -172,8 +172,16 @@ const rateLimitCreateComment = makeRateLimit("create-comment", 20, 60_000); // 2
 
 // Catch unhandled errors and forward to Sentry (no-op if Sentry not
 // initialized). Falls through to Fastify's default error response.
+//
+// Only 5xx (genuine server faults) go to Sentry. 4xx errors — malformed
+// JSON bodies, schema validation, rate-limit rejections — are client
+// mistakes, not bugs, and would otherwise flood Sentry with noise any
+// time a bot or a fat-fingered request hits the API. Errors thrown
+// without a statusCode default to 500 (a real unhandled fault) and are
+// still reported.
 app.setErrorHandler((err, request, reply) => {
-  if (process.env.SENTRY_DSN_API) {
+  const statusCode = (err as { statusCode?: number }).statusCode ?? 500;
+  if (process.env.SENTRY_DSN_API && statusCode >= 500) {
     Sentry.captureException(err);
   }
   request.log.error(err);
