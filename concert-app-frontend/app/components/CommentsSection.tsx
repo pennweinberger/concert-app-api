@@ -9,6 +9,7 @@ import {
   useAuthUser,
 } from "../lib/auth";
 import { isDeletedHandle, DELETED_USER_LABEL } from "../lib/displayUser";
+import ReportMenu from "./ReportMenu";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -262,6 +263,11 @@ export default function CommentsSection({ reviewId, initialCount }: Props) {
                       minute: "2-digit",
                     })}
                   </span>
+                  {authUser && !owned && !deleted && (
+                    <span style={{ marginLeft: "auto" }}>
+                      <ReportMenu targetType="COMMENT" targetId={c.id} />
+                    </span>
+                  )}
                   {owned && pendingDeleteId !== c.id && (
                     <button
                       onClick={() => setPendingDeleteId(c.id)}

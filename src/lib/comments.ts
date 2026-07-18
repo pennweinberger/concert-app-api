@@ -13,6 +13,7 @@
 //   is a documented launch-gating item.
 
 import type { PrismaClient } from "@prisma/client";
+import { NOT_BLOCKED } from "./moderation.js";
 
 const MIN_BODY = 1;
 const MAX_BODY = 2000;
@@ -75,9 +76,10 @@ export async function createComment(
 
   const review = await deps.prisma.review.findUnique({
     where: { id: input.reviewId },
-    select: { id: true, userId: true, showId: true },
+    select: { id: true, userId: true, showId: true, moderationStatus: true },
   });
-  if (!review) {
+  // A blocked review is treated as non-existent for commenting.
+  if (!review || review.moderationStatus === "BLOCKED") {
     return { ok: false, reason: "review_not_found" };
   }
 
@@ -191,7 +193,7 @@ export async function listComments(
   const rows = await deps.prisma.reviewComment.findMany({
     where: {
       reviewId: input.reviewId,
-      moderationStatus: { not: "BLOCKED" },
+      ...NOT_BLOCKED,
       ...(input.cursor ? { createdAt: { gt: input.cursor } } : {}),
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],

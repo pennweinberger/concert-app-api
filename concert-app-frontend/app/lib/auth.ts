@@ -12,6 +12,7 @@ export type AuthUser = {
   handle: string;
   email?: string | null;
   emailVerified?: boolean;
+  isAdmin?: boolean;
   pendingDeletion?: boolean;
   deletionScheduledFor?: string | null;
 };

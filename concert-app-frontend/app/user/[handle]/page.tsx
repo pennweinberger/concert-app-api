@@ -9,6 +9,7 @@ import StarRating from "../../components/StarRating";
 import FollowButton from "../../components/FollowButton";
 import Avatar from "../../components/Avatar";
 import CommentsSection from "../../components/CommentsSection";
+import ReportMenu from "../../components/ReportMenu";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -30,6 +31,7 @@ type Review = {
 };
 
 type UserDetail = {
+  id: string;
   handle: string;
   name: string | null;
   avatarUrl: string | null;
@@ -359,7 +361,14 @@ export default function UserPage() {
               following
             </div>
             {!isOwnProfile && (
-              <div style={{ marginBottom: "28px" }}>
+              <div
+                style={{
+                  marginBottom: "28px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
                 <FollowButton
                   handle={user.handle}
                   initialFollowing={user.followedByMe}
@@ -376,6 +385,9 @@ export default function UserPage() {
                     );
                   }}
                 />
+                {authUser && (
+                  <ReportMenu targetType="USER" targetId={user.id} />
+                )}
               </div>
             )}
 

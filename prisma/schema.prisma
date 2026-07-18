@@ -15,6 +15,28 @@ enum ModerationStatus {
   BLOCKED
 }
 
+enum ReportTargetType {
+  REVIEW
+  COMMENT
+  USER
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  HATE_SPEECH
+  INAPPROPRIATE_CONTENT
+  FAKE_REVIEW
+  IMPERSONATION
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  ACTIONED
+  DISMISSED
+}
+
 model User {
   id              String   @id @default(cuid())
   handle          String   @unique
@@ -27,6 +49,13 @@ model User {
   deletedAt       DateTime?
   anonymizedAt    DateTime?
 
+  // Moderation. isAdmin gates /admin/*; suspendedAt blocks content
+  // actions (create/edit review, comment, like, follow, report) via the
+  // requireActiveUserId helper while still allowing sign-in + read.
+  isAdmin          Boolean   @default(false)
+  suspendedAt      DateTime?
+  suspensionReason String?
+
   reviews            Review[]
   reviewLikes        ReviewLike[]
   reviewComments     ReviewComment[]
@@ -38,6 +67,9 @@ model User {
 
   notificationsReceived Notification[] @relation("NotificationsReceived")
   notificationsActed    Notification[] @relation("NotificationsActed")
+
+  reportsFiled    Report[] @relation("ReportsFiled")
+  reportsResolved Report[] @relation("ReportsResolved")
 }
 
 model VerificationToken {
@@ -290,4 +322,30 @@ model Notification {
 
   @@index([recipientUserId, createdAt])          // newest-first list
   @@index([recipientUserId, readAt])             // unread badge count
+}
+
+// User-filed abuse reports against a review, comment, or user. targetId
+// is polymorphic (no FK) — resolved by (targetType, targetId) in the
+// admin queue, which tolerates a since-deleted target. One report per
+// (reporter, targetType, targetId) via the unique index. Blocking
+// content or suspending a user resolves the relevant open reports to
+// ACTIONED; the admin can also dismiss individually or per-target.
+model Report {
+  id               String           @id @default(cuid())
+  reporterUserId   String
+  targetType       ReportTargetType
+  targetId         String
+  reason           ReportReason
+  details          String?
+  status           ReportStatus     @default(OPEN)
+  createdAt        DateTime         @default(now())
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+
+  reporter   User  @relation("ReportsFiled", fields: [reporterUserId], references: [id], onDelete: Cascade)
+  resolvedBy User? @relation("ReportsResolved", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([reporterUserId, targetType, targetId])
+  @@index([status, targetType, targetId])
+  @@index([targetType, targetId])
 }

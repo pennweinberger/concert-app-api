@@ -10,6 +10,7 @@ import StarRating from "./components/StarRating";
 import Avatar from "./components/Avatar";
 import ShowSearch from "./components/ShowSearch";
 import NotificationBell from "./components/NotificationBell";
+import ReportMenu from "./components/ReportMenu";
 
 type FeedScope = "all" | "following";
 
@@ -146,6 +147,21 @@ export default function Home() {
             <>
               <NotificationBell />
               <span style={{ color: "#444" }}>·</span>
+              {authUser.isAdmin && (
+                <>
+                  <Link
+                    href="/admin/moderation"
+                    style={{
+                      color: "#ff8080",
+                      textDecoration: "underline",
+                      textUnderlineOffset: "3px",
+                    }}
+                  >
+                    Admin
+                  </Link>
+                  <span style={{ color: "#444" }}>·</span>
+                </>
+              )}
               <Link
                 href="/people"
                 style={{
@@ -507,6 +523,11 @@ export default function Home() {
                     >
                       💬 {item.commentCount}
                     </Link>
+                    {authUser && authUser.handle !== item.userHandle && (
+                      <span style={{ marginLeft: "auto" }}>
+                        <ReportMenu targetType="REVIEW" targetId={item.reviewId} />
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

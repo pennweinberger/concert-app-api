@@ -31,6 +31,17 @@ import {
   DEFAULT_NOTIFICATIONS_LIMIT,
   MAX_NOTIFICATIONS_LIMIT,
 } from "./lib/notifications.js";
+import { NOT_BLOCKED, NOT_BLOCKED_COUNT } from "./lib/moderation.js";
+import {
+  createReport,
+  listOpenReportsGrouped,
+  blockContent,
+  restoreContent,
+  dismissReport,
+  dismissTarget,
+  suspendUser,
+  unsuspendUser,
+} from "./lib/reports.js";
 import {
   searchShows,
   DEFAULT_SHOW_SEARCH_LIMIT,
@@ -247,6 +258,55 @@ async function requireVerifiedUserId(
   return userId;
 }
 
+// Requires a verified user (via requireVerifiedUserId) who is ALSO not
+// suspended. This is the gate for every additive member action — create/
+// edit review, comment, like, follow, file report. Enforcing suspension
+// in one shared place keeps it consistent instead of per-endpoint.
+// Removals (unlike, unfollow, delete own content) intentionally do NOT
+// use this, so a suspended user can still clean up after themselves.
+async function requireActiveUserId(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<string | null> {
+  const userId = await requireVerifiedUserId(request, reply);
+  if (!userId) return null; // response already sent (401 / 403 verified)
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { suspendedAt: true },
+  });
+  if (user?.suspendedAt) {
+    reply.status(403).send({
+      error: "Your account is suspended.",
+      reason: "account_suspended",
+    });
+    return null;
+  }
+  return userId;
+}
+
+// Requires a valid JWT AND an admin account. Guards all /admin/* routes.
+async function requireAdminUserId(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<string | null> {
+  try {
+    await request.jwtVerify();
+  } catch {
+    reply.status(401).send({ error: "Not authenticated" });
+    return null;
+  }
+  const { userId } = request.user;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isAdmin: true },
+  });
+  if (!user?.isAdmin) {
+    reply.status(403).send({ error: "Forbidden" });
+    return null;
+  }
+  return userId;
+}
+
 // --- Pagination helpers ----------------------------------------------------
 
 const DEFAULT_PAGE_LIMIT = 20;
@@ -375,6 +435,7 @@ app.post(
         handle: user.handle,
         email: user.email,
         emailVerified: false,
+        isAdmin: user.isAdmin,
       },
     });
   } catch (err: any) {
@@ -424,6 +485,7 @@ app.post(
       handle: user.handle,
       email: user.email,
       emailVerified: user.emailVerifiedAt !== null,
+      isAdmin: user.isAdmin,
       pendingDeletion: user.deletedAt !== null,
       deletionScheduledFor: user.deletedAt
         ? deletionScheduledFor(user.deletedAt).toISOString()
@@ -449,6 +511,8 @@ app.get("/auth/me", async (request, reply) => {
       avatarUrl: true,
       deletedAt: true,
       anonymizedAt: true,
+      isAdmin: true,
+      suspendedAt: true,
     },
   });
   if (!dbUser) {
@@ -466,6 +530,8 @@ app.get("/auth/me", async (request, reply) => {
       emailVerified: dbUser.emailVerifiedAt !== null,
       name: dbUser.name,
       avatarUrl: dbUser.avatarUrl,
+      isAdmin: dbUser.isAdmin,
+      suspended: dbUser.suspendedAt !== null,
       pendingDeletion: dbUser.deletedAt !== null,
       deletionScheduledFor: dbUser.deletedAt
         ? deletionScheduledFor(dbUser.deletedAt).toISOString()
@@ -1046,7 +1112,7 @@ app.get(
 );
 
 app.post("/reviews", async (request, reply) => {
-  const userId = await requireVerifiedUserId(request, reply);
+  const userId = await requireActiveUserId(request, reply);
   if (!userId) return;
 
   const body = request.body as {
@@ -1115,13 +1181,8 @@ app.post("/reviews", async (request, reply) => {
 });
 
 app.patch("/reviews/:id", async (request, reply) => {
-  try {
-    await request.jwtVerify();
-  } catch {
-    return reply.status(401).send({ error: "Not authenticated" });
-  }
-
-  const { userId } = request.user;
+  const userId = await requireActiveUserId(request, reply);
+  if (!userId) return;
   const { id } = request.params as { id: string };
   const body = request.body as {
     ratingOverall?: unknown;
@@ -1216,7 +1277,7 @@ app.delete("/reviews/:id", async (request, reply) => {
 });
 
 app.post("/reviews/:id/like", async (request, reply) => {
-  const userId = await requireVerifiedUserId(request, reply);
+  const userId = await requireActiveUserId(request, reply);
   if (!userId) return;
   const { id: reviewId } = request.params as { id: string };
 
@@ -1224,9 +1285,11 @@ app.post("/reviews/:id/like", async (request, reply) => {
   // the author (userId) to notify them of a new like.
   const review = await prisma.review.findUnique({
     where: { id: reviewId },
-    select: { id: true, userId: true, showId: true },
+    select: { id: true, userId: true, showId: true, moderationStatus: true },
   });
-  if (!review) {
+  // Treat a blocked review as not-found — you can't interact with hidden
+  // content, and we don't reveal its existence.
+  if (!review || review.moderationStatus === "BLOCKED") {
     return reply.status(404).send({ error: "Review not found" });
   }
 
@@ -1336,7 +1399,7 @@ app.post(
   "/reviews/:reviewId/comments",
   { preHandler: rateLimitCreateComment },
   async (request, reply) => {
-    const userId = await requireVerifiedUserId(request, reply);
+    const userId = await requireActiveUserId(request, reply);
     if (!userId) return;
     const { reviewId } = request.params as { reviewId: string };
     const body = request.body as { body?: unknown };
@@ -1439,6 +1502,7 @@ app.get("/feed", async (request, reply) => {
 
     // Fetch limit+1 so we know whether there's another page.
     const reviewWhere = {
+      ...NOT_BLOCKED,
       ...(followingIds ? { userId: { in: followingIds } } : {}),
       ...(cursor ? { publishedAt: { lt: cursor } } : {}),
     };
@@ -1458,7 +1522,7 @@ app.get("/feed", async (request, reply) => {
         _count: {
           select: {
             likes: true,
-            comments: { where: { moderationStatus: { not: "BLOCKED" } } },
+            comments: NOT_BLOCKED_COUNT,
           },
         },
       },
@@ -1591,7 +1655,7 @@ app.get("/artists/:id", async (request, reply) => {
     // Reviews live on shows; we filter by show.artistId. Aggregate
     // count + average across all of them (not just the page).
     const reviewStats = await prisma.review.aggregate({
-      where: { show: { artistId: id } },
+      where: { ...NOT_BLOCKED, show: { artistId: id } },
       _count: true,
       _avg: { ratingOverall: true },
     });
@@ -1599,6 +1663,7 @@ app.get("/artists/:id", async (request, reply) => {
     // Paginated reviews page.
     const reviews = await prisma.review.findMany({
       where: {
+        ...NOT_BLOCKED,
         show: { artistId: id },
         ...(cursor ? { publishedAt: { lt: cursor } } : {}),
       },
@@ -1616,7 +1681,7 @@ app.get("/artists/:id", async (request, reply) => {
         _count: {
           select: {
             likes: true,
-            comments: { where: { moderationStatus: { not: "BLOCKED" } } },
+            comments: NOT_BLOCKED_COUNT,
           },
         },
       },
@@ -1755,7 +1820,7 @@ app.get("/shows/:id", async (request, reply) => {
           include: { artist: true, venue: true },
         }),
         prisma.review.aggregate({
-          where: { showId: id },
+          where: { ...NOT_BLOCKED, showId: id },
           _count: true,
           _avg: { ratingOverall: true },
         }),
@@ -1775,6 +1840,7 @@ app.get("/shows/:id", async (request, reply) => {
     // Paginated reviews page (cursor + limit+1).
     const reviews = await prisma.review.findMany({
       where: {
+        ...NOT_BLOCKED,
         showId: id,
         ...(cursor ? { publishedAt: { lt: cursor } } : {}),
       },
@@ -1785,7 +1851,7 @@ app.get("/shows/:id", async (request, reply) => {
         _count: {
           select: {
             likes: true,
-            comments: { where: { moderationStatus: { not: "BLOCKED" } } },
+            comments: NOT_BLOCKED_COUNT,
           },
         },
       },
@@ -1862,7 +1928,11 @@ app.get("/users/search", async (request, reply) => {
       name: true,
       avatarUrl: true,
       _count: {
-        select: { followers: true, reviews: true, attendances: true },
+        select: {
+          followers: true,
+          reviews: NOT_BLOCKED_COUNT,
+          attendances: true,
+        },
       },
       ...(viewerId
         ? {
@@ -1947,7 +2017,7 @@ app.get("/users/:handle", async (request, reply) => {
     const [reviewStats, followerCount, followingCount, viewerFollow] =
       await Promise.all([
         prisma.review.aggregate({
-          where: { userId: user.id },
+          where: { ...NOT_BLOCKED, userId: user.id },
           _count: true,
           _avg: { ratingOverall: true },
         }),
@@ -1968,6 +2038,7 @@ app.get("/users/:handle", async (request, reply) => {
     // Paginated reviews page.
     const reviews = await prisma.review.findMany({
       where: {
+        ...NOT_BLOCKED,
         userId: user.id,
         ...(cursor ? { publishedAt: { lt: cursor } } : {}),
       },
@@ -1980,7 +2051,7 @@ app.get("/users/:handle", async (request, reply) => {
         _count: {
           select: {
             likes: true,
-            comments: { where: { moderationStatus: { not: "BLOCKED" } } },
+            comments: NOT_BLOCKED_COUNT,
           },
         },
       },
@@ -1998,6 +2069,7 @@ app.get("/users/:handle", async (request, reply) => {
         : null;
 
     return {
+      id: user.id,
       handle: user.handle,
       name: user.name,
       avatarUrl: user.avatarUrl,
@@ -2130,7 +2202,7 @@ app.patch("/users/me", async (request, reply) => {
 });
 
 app.post("/users/:handle/follow", async (request, reply) => {
-  const followerId = await requireVerifiedUserId(request, reply);
+  const followerId = await requireActiveUserId(request, reply);
   if (!followerId) return;
   const { handle } = request.params as { handle: string };
 
@@ -2314,6 +2386,196 @@ app.post("/notifications/read-all", async (request, reply) => {
     app.log.error(err);
     return reply.status(500).send({ error: "Failed to mark all read" });
   }
+});
+
+// --- Reports (user-facing) -------------------------------------------------
+
+app.post("/reports", async (request, reply) => {
+  const reporterUserId = await requireActiveUserId(request, reply);
+  if (!reporterUserId) return;
+
+  const body = request.body as {
+    targetType?: unknown;
+    targetId?: unknown;
+    reason?: unknown;
+    details?: unknown;
+  };
+  const targetType = typeof body.targetType === "string" ? body.targetType : "";
+  const targetId = typeof body.targetId === "string" ? body.targetId : "";
+  const reason = typeof body.reason === "string" ? body.reason : "";
+  const details = typeof body.details === "string" ? body.details : null;
+  if (!targetId) {
+    return reply.status(400).send({ error: "targetId is required" });
+  }
+
+  try {
+    const result = await createReport(
+      { reporterUserId, targetType, targetId, reason, details },
+      { prisma },
+    );
+    if (!result.ok) {
+      const status = result.reason === "target_not_found" ? 404 : 400;
+      return reply.status(status).send({ error: result.reason });
+    }
+    return reply.status(201).send({ reported: true, alreadyReported: result.alreadyReported });
+  } catch (err: any) {
+    app.log.error(err);
+    Sentry.captureException(err);
+    return reply.status(500).send({ error: "Failed to file report" });
+  }
+});
+
+// --- Admin moderation ------------------------------------------------------
+
+app.get("/admin/reports", async (request, reply) => {
+  const adminId = await requireAdminUserId(request, reply);
+  if (!adminId) return;
+  try {
+    const items = await listOpenReportsGrouped({ prisma });
+    return reply.status(200).send({ items });
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({ error: "Failed to load reports" });
+  }
+});
+
+// Moderation user-detail: profile + ALL their reviews (incl. blocked) +
+// open reports against them, so the admin can judge before suspending.
+app.get("/admin/users/:userId", async (request, reply) => {
+  const adminId = await requireAdminUserId(request, reply);
+  if (!adminId) return;
+  const { userId } = request.params as { userId: string };
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        handle: true,
+        name: true,
+        avatarUrl: true,
+        createdAt: true,
+        suspendedAt: true,
+        suspensionReason: true,
+      },
+    });
+    if (!user) return reply.status(404).send({ error: "User not found" });
+    const reviews = await prisma.review.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: {
+        id: true,
+        reviewTextRaw: true,
+        ratingOverall: true,
+        moderationStatus: true,
+        createdAt: true,
+        showId: true,
+      },
+    });
+    const openReportCount = await prisma.report.count({
+      where: { targetType: "USER", targetId: userId, status: "OPEN" },
+    });
+    return reply.status(200).send({ user, reviews, openReportCount });
+  } catch (err: any) {
+    app.log.error(err);
+    return reply.status(500).send({ error: "Failed to load user detail" });
+  }
+});
+
+app.post("/admin/reports/:id/dismiss", async (request, reply) => {
+  const adminId = await requireAdminUserId(request, reply);
+  if (!adminId) return;
+  const { id } = request.params as { id: string };
+  const result = await dismissReport(id, adminId, { prisma, now: () => new Date() });
+  if (!result.ok) return reply.status(404).send({ error: result.reason });
+  return reply.status(200).send({ ok: true });
+});
+
+// Target-level actions share a small body { targetType, targetId }.
+function readTarget(request: FastifyRequest): { targetType: string; targetId: string } {
+  const b = request.body as { targetType?: unknown; targetId?: unknown };
+  return {
+    targetType: typeof b.targetType === "string" ? b.targetType : "",
+    targetId: typeof b.targetId === "string" ? b.targetId : "",
+  };
+}
+
+app.post("/admin/moderation/block", async (request, reply) => {
+  const adminId = await requireAdminUserId(request, reply);
+  if (!adminId) return;
+  const { targetType, targetId } = readTarget(request);
+  if (targetType !== "REVIEW" && targetType !== "COMMENT") {
+    return reply.status(400).send({ error: "targetType must be REVIEW or COMMENT" });
+  }
+  if (!targetId) return reply.status(400).send({ error: "targetId is required" });
+  const result = await blockContent(targetType, targetId, adminId, {
+    prisma,
+    now: () => new Date(),
+  });
+  if (!result.ok) return reply.status(404).send({ error: result.reason });
+  return reply.status(200).send({ ok: true });
+});
+
+app.post("/admin/moderation/restore", async (request, reply) => {
+  const adminId = await requireAdminUserId(request, reply);
+  if (!adminId) return;
+  const { targetType, targetId } = readTarget(request);
+  if (targetType !== "REVIEW" && targetType !== "COMMENT") {
+    return reply.status(400).send({ error: "targetType must be REVIEW or COMMENT" });
+  }
+  if (!targetId) return reply.status(400).send({ error: "targetId is required" });
+  const result = await restoreContent(targetType, targetId, { prisma });
+  if (!result.ok) return reply.status(404).send({ error: result.reason });
+  return reply.status(200).send({ ok: true });
+});
+
+app.post("/admin/moderation/dismiss-target", async (request, reply) => {
+  const adminId = await requireAdminUserId(request, reply);
+  if (!adminId) return;
+  const { targetType, targetId } = readTarget(request);
+  if (
+    targetType !== "REVIEW" &&
+    targetType !== "COMMENT" &&
+    targetType !== "USER"
+  ) {
+    return reply.status(400).send({ error: "invalid targetType" });
+  }
+  if (!targetId) return reply.status(400).send({ error: "targetId is required" });
+  const result = await dismissTarget(targetType, targetId, adminId, {
+    prisma,
+    now: () => new Date(),
+  });
+  if (!result.ok) return reply.status(400).send({ error: result.reason });
+  return reply.status(200).send({ ok: true });
+});
+
+app.post("/admin/moderation/suspend", async (request, reply) => {
+  const adminId = await requireAdminUserId(request, reply);
+  if (!adminId) return;
+  const b = request.body as { userId?: unknown; reason?: unknown };
+  const userId = typeof b.userId === "string" ? b.userId : "";
+  const reason = typeof b.reason === "string" ? b.reason : null;
+  if (!userId) return reply.status(400).send({ error: "userId is required" });
+  if (userId === adminId) {
+    return reply.status(400).send({ error: "You can't suspend yourself" });
+  }
+  const result = await suspendUser(userId, reason, adminId, {
+    prisma,
+    now: () => new Date(),
+  });
+  if (!result.ok) return reply.status(404).send({ error: result.reason });
+  return reply.status(200).send({ ok: true });
+});
+
+app.post("/admin/moderation/unsuspend", async (request, reply) => {
+  const adminId = await requireAdminUserId(request, reply);
+  if (!adminId) return;
+  const b = request.body as { userId?: unknown };
+  const userId = typeof b.userId === "string" ? b.userId : "";
+  if (!userId) return reply.status(400).send({ error: "userId is required" });
+  const result = await unsuspendUser(userId, { prisma });
+  if (!result.ok) return reply.status(404).send({ error: result.reason });
+  return reply.status(200).send({ ok: true });
 });
 
 registerInternalRoutes(app, prisma);

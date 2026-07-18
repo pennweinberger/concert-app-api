@@ -12,6 +12,7 @@
 // which page boundary it crossed.
 
 import type { PrismaClient } from "@prisma/client";
+import { NOT_BLOCKED_COUNT } from "./moderation.js";
 
 export const MIN_SHOW_SEARCH_QUERY = 2;
 export const DEFAULT_SHOW_SEARCH_LIMIT = 20;
@@ -81,7 +82,7 @@ export async function searchShows(
       venue: { select: { id: true, name: true, city: true } },
       _count: {
         select: {
-          reviews: { where: { moderationStatus: { not: "BLOCKED" } } },
+          reviews: NOT_BLOCKED_COUNT,
           attendances: true,
         },
       },
