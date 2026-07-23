@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authHeaders, clearSession, useAuthUser } from "./lib/auth";
-import { isDeletedHandle, DELETED_USER_LABEL } from "./lib/displayUser";
-import LikeButton from "./components/LikeButton";
-import StarRating from "./components/StarRating";
-import Avatar from "./components/Avatar";
 import ShowSearch from "./components/ShowSearch";
 import NotificationBell from "./components/NotificationBell";
-import ReportMenu from "./components/ReportMenu";
+import ProfileMenu from "./components/ProfileMenu";
+import ReviewCard from "./components/ReviewCard";
+import { formatShowDate } from "./lib/dateFormat";
 
 type FeedScope = "all" | "following";
 
@@ -26,9 +24,9 @@ type FeedShow = {
   city: string;
 };
 
-// Discriminated union: review entries are the full card; attendance
-// entries are lighter activity rows that only appear on the Following
-// tab when the user has attended but not reviewed.
+// Discriminated union: review entries are the full editorial card;
+// attendance entries are lighter activity rows that only appear on the
+// Following tab when the user has attended but not reviewed.
 type FeedItem =
   | {
       type: "review";
@@ -53,6 +51,32 @@ type FeedItem =
       attendedAt: string;
       show: FeedShow;
     };
+
+const navLinkStyle: CSSProperties = {
+  color: "#8f8f8f",
+  textDecoration: "none",
+  fontSize: "14px",
+};
+
+const navButtonStyle: CSSProperties = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  color: "#8f8f8f",
+  cursor: "pointer",
+  fontSize: "14px",
+  fontFamily: "inherit",
+};
+
+const writeReviewPillStyle: CSSProperties = {
+  color: "#f4f1ea",
+  fontSize: "13.5px",
+  fontWeight: 500,
+  border: "1px solid #333",
+  borderRadius: "8px",
+  padding: "6px 12px",
+  textDecoration: "none",
+};
 
 export default function Home() {
   const router = useRouter();
@@ -131,208 +155,163 @@ export default function Home() {
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
-        <div
+        {/* Masthead — wordmark + nav. Write Review lives here so it is
+            one click away at all times. */}
+        <header
           style={{
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             alignItems: "center",
             gap: "12px",
-            fontSize: "14px",
-            marginBottom: "16px",
-            color: "#aaa",
-            minHeight: "20px",
+            marginBottom: "26px",
           }}
         >
-          {authUser ? (
-            <>
-              <NotificationBell />
-              <span style={{ color: "#444" }}>·</span>
-              {authUser.isAdmin && (
-                <>
+          <Link
+            href="/"
+            style={{
+              fontSize: "19px",
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+              color: "#f4f1ea",
+              textDecoration: "none",
+            }}
+          >
+            Afterset
+          </Link>
+
+          {/* Desktop: full link row. */}
+          <nav className="masthead-nav-desktop" aria-label="Primary">
+            <Link href="/review/new" style={writeReviewPillStyle}>
+              Write Review
+            </Link>
+            {authUser ? (
+              <>
+                {authUser.isAdmin && (
                   <Link
                     href="/admin/moderation"
-                    style={{
-                      color: "#ff8080",
-                      textDecoration: "underline",
-                      textUnderlineOffset: "3px",
-                    }}
+                    style={{ ...navLinkStyle, color: "#ff8080" }}
                   >
                     Admin
                   </Link>
-                  <span style={{ color: "#444" }}>·</span>
-                </>
-              )}
-              <Link
-                href="/people"
-                style={{
-                  color: "#f4f1ea",
-                  textDecoration: "underline",
-                  textUnderlineOffset: "3px",
-                }}
-              >
-                Find Users
-              </Link>
-              <span style={{ color: "#444" }}>·</span>
-              <Link
-                href={`/user/${authUser.handle}`}
-                style={{
-                  color: "#f4f1ea",
-                  textDecoration: "underline",
-                  textUnderlineOffset: "3px",
-                }}
-              >
-                Profile
-              </Link>
-              <span style={{ color: "#444" }}>·</span>
-              <Link
-                href="/settings"
-                style={{
-                  color: "#f4f1ea",
-                  textDecoration: "underline",
-                  textUnderlineOffset: "3px",
-                }}
-              >
-                Settings
-              </Link>
-              <span style={{ color: "#444" }}>·</span>
-              <button
-                onClick={() => clearSession()}
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  color: "#f4f1ea",
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  fontFamily: "inherit",
-                  textDecoration: "underline",
-                  textUnderlineOffset: "3px",
-                }}
-              >
-                Sign out
-              </button>
-            </>
-          ) : (
-            <>
-              <Link
-                href="/signin"
-                style={{
-                  color: "#f4f1ea",
-                  textDecoration: "underline",
-                  textUnderlineOffset: "3px",
-                }}
-              >
-                Sign in
-              </Link>
-              <span style={{ color: "#444" }}>·</span>
-              <Link
-                href="/signup"
-                style={{
-                  color: "#f4f1ea",
-                  textDecoration: "underline",
-                  textUnderlineOffset: "3px",
-                }}
-              >
-                Sign up
-              </Link>
-            </>
-          )}
-        </div>
+                )}
+                <Link href="/people" style={navLinkStyle}>
+                  Find Users
+                </Link>
+                <NotificationBell />
+                <Link href={`/user/${authUser.handle}`} style={navLinkStyle}>
+                  Profile
+                </Link>
+                <Link href="/settings" style={navLinkStyle}>
+                  Settings
+                </Link>
+                <button onClick={() => clearSession()} style={navButtonStyle}>
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link href="/signin" style={navLinkStyle}>
+                  Sign in
+                </Link>
+                <Link href="/signup" style={navLinkStyle}>
+                  Sign up
+                </Link>
+              </>
+            )}
+          </nav>
 
-        <h1
-          style={{
-            fontSize: "34px",
-            marginBottom: "8px",
-            fontFamily: "var(--font-display), sans-serif",
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Afterset
-        </h1>
-        <p style={{ color: "#aaa", marginBottom: "24px" }}>
-          Review concerts. Discover the best live shows.
-        </p>
+          {/* Mobile / narrow tablet: compact row + profile menu. */}
+          <div className="masthead-nav-compact" aria-label="Primary">
+            <Link href="/review/new" style={writeReviewPillStyle}>
+              Write Review
+            </Link>
+            {authUser ? (
+              <>
+                <NotificationBell />
+                <ProfileMenu
+                  handle={authUser.handle}
+                  isAdmin={!!authUser.isAdmin}
+                />
+              </>
+            ) : (
+              <>
+                <Link href="/signin" style={navLinkStyle}>
+                  Sign in
+                </Link>
+                <Link href="/signup" style={navLinkStyle}>
+                  Sign up
+                </Link>
+              </>
+            )}
+          </div>
+        </header>
 
-        <Link
-          href="/review/new"
-          style={{
-            display: "block",
-            width: "100%",
-            padding: "14px",
-            borderRadius: "12px",
-            background: "#f4f1ea",
-            color: "#0a0a0a",
-            fontWeight: "bold",
-            textAlign: "center",
-            textDecoration: "none",
-            marginBottom: "32px",
-          }}
-        >
-          + Write a Review
-        </Link>
+        {/* Full-width search — primary discovery behavior, always visible. */}
+        <ShowSearch fullWidth />
 
-        <ShowSearch />
-
+        {/* Section heading + monochrome scope tabs. */}
         <div
           style={{
             display: "flex",
-            alignItems: "center",
+            alignItems: "baseline",
             justifyContent: "space-between",
-            marginBottom: "14px",
+            marginTop: "34px",
+            marginBottom: "4px",
           }}
         >
-          <h2 style={{ margin: 0 }}>Live Feed</h2>
-          <div
+          <h1
             style={{
-              display: "flex",
-              gap: "16px",
-              padding: 0,
+              margin: 0,
+              fontSize: "18px",
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
             }}
+          >
+            Latest Reviews
+          </h1>
+          <div
+            style={{ display: "flex", gap: "18px" }}
             role="tablist"
             aria-label="Feed scope"
           >
-            {(["all", "following"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => selectScope(mode)}
-                role="tab"
-                aria-selected={scope === mode}
-                style={{
-                  background: "transparent",
-                  color: scope === mode ? "#f4f1ea" : "#666",
-                  border: "none",
-                  borderBottom:
-                    scope === mode
-                      ? "2px solid #c8b6ff"
+            {(["all", "following"] as const).map((mode) => {
+              const active = scope === mode;
+              return (
+                <button
+                  key={mode}
+                  onClick={() => selectScope(mode)}
+                  role="tab"
+                  aria-selected={active}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    borderBottom: active
+                      ? "2px solid #f4f1ea"
                       : "2px solid transparent",
-                  padding: "6px 0",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  fontWeight: scope === mode ? "bold" : "normal",
-                  fontFamily: "inherit",
-                }}
-              >
-                {mode === "all" ? "All" : "Following"}
-              </button>
-            ))}
+                    padding: "4px 0",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    fontFamily: "inherit",
+                    color: active ? "#f4f1ea" : "#666",
+                    fontWeight: active ? 600 : 400,
+                  }}
+                >
+                  {mode === "all" ? "All" : "Following"}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {loading && (
-          <div style={{ color: "#888", fontSize: "14px", padding: "8px 0" }}>
+          <div style={{ color: "#888", fontSize: "14px", padding: "20px 0" }}>
             Loading…
           </div>
         )}
 
         {!loading && error && (
           <div
-            style={{
-              background: "#1f1f1f",
-              padding: "16px",
-              borderRadius: "12px",
-              color: "#ff8080",
-            }}
+            style={{ color: "#ff8080", fontSize: "14px", padding: "20px 0" }}
           >
             {error}
           </div>
@@ -341,10 +320,10 @@ export default function Home() {
         {!loading && !error && feed.length === 0 && (
           <div
             style={{
-              background: "#1a1a1a",
-              padding: "18px",
-              borderRadius: "14px",
-              color: "#aaa",
+              color: "#888",
+              fontSize: "15px",
+              padding: "24px 0",
+              lineHeight: 1.6,
             }}
           >
             {scope === "following" ? (
@@ -376,242 +355,56 @@ export default function Home() {
           </div>
         )}
 
-        {feed.map((item) =>
-          item.type === "review" ? (
-            <div
-              key={`r:${item.reviewId}`}
-              style={{
-                padding: "28px 0",
-                borderBottom: "1px solid #1f1f1f",
-                position: "relative",
-              }}
-            >
-              {/* Overlay link covers the whole card; inner @user link and
-                  ♥ button re-enable pointer events to stay clickable. */}
-              <Link
-                href={`/show/${item.show.id}`}
-                aria-label={`View show: ${item.show.artist} at ${item.show.venue}`}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  zIndex: 0,
-                }}
-              />
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  pointerEvents: "none",
-                  display: "flex",
-                  gap: "12px",
-                }}
-              >
-                {isDeletedHandle(item.userHandle) ? (
-                  <div
-                    aria-label="deleted user"
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: "50%",
-                      background: "#2a2a2a",
-                      flexShrink: 0,
-                    }}
-                  />
-                ) : (
-                  <Link
-                    href={`/user/${item.userHandle}`}
-                    aria-label={`View @${item.userHandle}`}
-                    style={{
-                      pointerEvents: "auto",
-                      position: "relative",
-                      flexShrink: 0,
-                      textDecoration: "none",
-                    }}
-                  >
-                    <Avatar
-                      handle={item.userHandle}
-                      name={item.userName}
-                      avatarUrl={item.userAvatarUrl}
-                      size={36}
-                    />
-                  </Link>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "15px" }}>
-                    {item.userName && !isDeletedHandle(item.userHandle) && (
-                      <span
-                        style={{ color: "white", fontWeight: "bold" }}
-                      >
-                        {item.userName}{" "}
-                      </span>
-                    )}
-                    {isDeletedHandle(item.userHandle) ? (
-                      <span style={{ color: "#888" }}>
-                        {DELETED_USER_LABEL}
-                      </span>
-                    ) : (
-                    <Link
-                      href={`/user/${item.userHandle}`}
-                      style={{
-                        color: "#f4f1ea",
-                        textDecoration: "underline",
-                        textUnderlineOffset: "3px",
-                        fontWeight: item.userName ? "normal" : "bold",
-                        pointerEvents: "auto",
-                        position: "relative",
-                      }}
-                    >
-                      @{item.userHandle}
-                    </Link>
-                    )}
-                    <span style={{ color: "#aaa" }}> reviewed </span>
-                    <span style={{ color: "white", fontWeight: "bold" }}>
-                      {item.show.artist}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      color: "#aaa",
-                      fontSize: "14px",
-                      marginTop: "4px",
-                    }}
-                  >
-                    {item.show.venue}
-                    <span style={{ color: "#555", margin: "0 6px" }}>·</span>
-                    {new Date(item.show.localDate).toLocaleDateString(
-                      undefined,
-                      {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      },
-                    )}
-                  </div>
-                  <div style={{ marginTop: "8px" }}>
-                    <StarRating rating={item.ratingOverall} />
-                  </div>
-                  {item.reviewTextRaw.trim().length > 0 && (
-                    <div style={{ marginTop: "10px" }}>
-                      {item.reviewTextRaw}
-                    </div>
-                  )}
-                  <div
-                    style={{
-                      marginTop: "12px",
-                      pointerEvents: "auto",
-                      position: "relative",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "12px",
-                    }}
-                  >
-                    <LikeButton
-                      reviewId={item.reviewId}
-                      initialLiked={item.liked}
-                      initialLikeCount={item.likeCount}
-                    />
-                    {/* Comment count navigates to the show page where the
-                        thread can be opened. Keeps /feed scannable —
-                        comments do not open inline in this phase. */}
-                    <Link
-                      href={`/show/${item.show.id}`}
-                      style={{
-                        color: "#aaa",
-                        fontSize: "13px",
-                        textDecoration: "none",
-                      }}
-                    >
-                      💬 {item.commentCount}
-                    </Link>
-                    {authUser && authUser.handle !== item.userHandle && (
-                      <span style={{ marginLeft: "auto" }}>
-                        <ReportMenu targetType="REVIEW" targetId={item.reviewId} />
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            // Attendance-only row — lighter than a review card.
-            // Whole-row overlay link to the show. No stars, body, or
-            // like button (there's no review to react to).
-            <div
-              key={`a:${item.attendanceId}`}
-              style={{
-                padding: "16px 0",
-                borderBottom: "1px solid #1f1f1f",
-                position: "relative",
-              }}
-            >
-              <Link
-                href={`/show/${item.show.id}`}
-                aria-label={`View show: ${item.show.artist} at ${item.show.venue}`}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  zIndex: 0,
-                }}
-              />
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  pointerEvents: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  color: "#888",
-                  fontSize: "13px",
-                }}
-              >
-                <Link
-                  href={`/user/${item.userHandle}`}
-                  aria-label={`View @${item.userHandle}`}
+        {!loading && !error && feed.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "46px",
+              marginTop: "30px",
+            }}
+          >
+            {feed.map((item) =>
+              item.type === "review" ? (
+                <ReviewCard
+                  key={`r:${item.reviewId}`}
+                  item={item}
+                  viewerHandle={authUser?.handle ?? null}
+                />
+              ) : (
+                // Attendance — deliberately quiet: a single muted line,
+                // clearly secondary to reviews, links to user + show.
+                <div
+                  key={`a:${item.attendanceId}`}
                   style={{
-                    pointerEvents: "auto",
-                    position: "relative",
-                    flexShrink: 0,
-                    textDecoration: "none",
+                    fontSize: "13px",
+                    color: "#6a6a6a",
+                    lineHeight: 1.5,
                   }}
                 >
-                  <Avatar
-                    handle={item.userHandle}
-                    name={item.userName}
-                    avatarUrl={item.userAvatarUrl}
-                    size={28}
-                  />
-                </Link>
-                <div style={{ flex: 1, minWidth: 0 }}>
                   <Link
                     href={`/user/${item.userHandle}`}
-                    style={{
-                      color: "#aaa",
-                      textDecoration: "underline",
-                      textUnderlineOffset: "3px",
-                      pointerEvents: "auto",
-                      position: "relative",
-                    }}
+                    style={{ color: "#8a8a8a", textDecoration: "none" }}
                   >
                     @{item.userHandle}
                   </Link>
                   <span> attended </span>
-                  <span style={{ color: "#bbb" }}>{item.show.artist}</span>
-                  <span> at </span>
-                  <span style={{ color: "#bbb" }}>{item.show.venue}</span>
-                  <span style={{ color: "#444", margin: "0 6px" }}>·</span>
-                  {new Date(item.show.localDate).toLocaleDateString(
-                    undefined,
-                    {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    },
-                  )}
+                  <Link
+                    href={`/show/${item.show.id}`}
+                    style={{ color: "#8a8a8a", textDecoration: "none" }}
+                  >
+                    {item.show.artist}
+                  </Link>
+                  <span style={{ color: "#5a5a5a" }}>
+                    {" · "}
+                    {item.show.venue}
+                    {" · "}
+                    {formatShowDate(item.show.localDate)}
+                  </span>
                 </div>
-              </div>
-            </div>
-          ),
+              ),
+            )}
+          </div>
         )}
       </div>
     </main>

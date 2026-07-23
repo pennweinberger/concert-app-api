@@ -12,9 +12,18 @@
 type Props = {
   rating: number;
   size?: number;
+  /** Filled-star color. Defaults to the original gold used on show/
+   *  artist/profile pages; the editorial feed passes a monochrome cream. */
+  filledColor?: string;
+  emptyColor?: string;
 };
 
-export default function StarRating({ rating, size = 14 }: Props) {
+export default function StarRating({
+  rating,
+  size = 14,
+  filledColor = "#fbbf24",
+  emptyColor = "#444",
+}: Props) {
   return (
     <div
       style={{
@@ -29,7 +38,7 @@ export default function StarRating({ rating, size = 14 }: Props) {
         <span
           key={n}
           aria-hidden="true"
-          style={{ color: n <= rating ? "#fbbf24" : "#444" }}
+          style={{ color: n <= rating ? filledColor : emptyColor }}
         >
           ★
         </span>

@@ -48,22 +48,35 @@ export default function NotificationBell() {
         border: "none",
         padding: 0,
         cursor: "pointer",
-        color: "#f4f1ea",
-        fontSize: "18px",
+        color: "#9a9a9a",
         lineHeight: 1,
         display: "inline-flex",
         alignItems: "center",
       }}
     >
-      <span aria-hidden="true">🔔</span>
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        style={{ display: "block" }}
+      >
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      </svg>
       {count > 0 && (
         <span
           style={{
             position: "absolute",
             top: "-6px",
             right: "-8px",
-            background: "#ff4d6d",
-            color: "#fff",
+            background: "#f4f1ea",
+            color: "#0a0a0a",
             borderRadius: "999px",
             fontSize: "10px",
             fontWeight: 700,

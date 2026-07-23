@@ -11,6 +11,12 @@ type Props = {
   reviewId: string;
   initialLiked: boolean;
   initialLikeCount: number;
+  /**
+   * "default" keeps the original pink heart (show/artist/profile pages).
+   * "editorial" renders a restrained monochrome outline heart that fills
+   * cream when liked — used by the redesigned feed ReviewCard.
+   */
+  variant?: "default" | "editorial";
 };
 
 /**
@@ -27,6 +33,7 @@ export default function LikeButton({
   reviewId,
   initialLiked,
   initialLikeCount,
+  variant = "default",
 }: Props) {
   const router = useRouter();
   const [liked, setLiked] = useState(initialLiked);
@@ -91,6 +98,45 @@ export default function LikeButton({
     } finally {
       inFlight.current = false;
     }
+  }
+
+  if (variant === "editorial") {
+    return (
+      <button
+        onClick={toggle}
+        aria-label={liked ? "Unlike" : "Like"}
+        aria-pressed={liked}
+        style={{
+          background: "none",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "7px",
+          fontSize: "13px",
+          color: liked ? "#e8e2d4" : "#6f6f6f",
+          fontFamily: "inherit",
+          lineHeight: 1,
+        }}
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill={liked ? "currentColor" : "none"}
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={{ display: "block" }}
+        >
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+        </svg>
+        <span>{count}</span>
+      </button>
+    );
   }
 
   return (

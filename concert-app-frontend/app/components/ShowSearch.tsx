@@ -97,7 +97,11 @@ function rankAndSort(items: MergedItem[]): MergedItem[] {
     .map((x) => x.item);
 }
 
-export default function ShowSearch() {
+export default function ShowSearch({
+  fullWidth = false,
+}: {
+  fullWidth?: boolean;
+}) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<MergedItem[]>([]);
@@ -251,10 +255,38 @@ export default function ShowSearch() {
       ref={containerRef}
       style={{
         position: "relative",
-        maxWidth: 560,
-        margin: "0 auto 24px",
+        maxWidth: fullWidth ? "100%" : 560,
+        margin: fullWidth ? "0" : "0 auto 24px",
       }}
     >
+      {fullWidth && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: 15,
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: "#6f6f6f",
+            pointerEvents: "none",
+            display: "inline-flex",
+          }}
+        >
+          <svg
+            width="17"
+            height="17"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" />
+          </svg>
+        </span>
+      )}
       <input
         value={q}
         onChange={(e) => {
@@ -267,7 +299,7 @@ export default function ShowSearch() {
         spellCheck={false}
         style={{
           width: "100%",
-          padding: "12px 14px",
+          padding: fullWidth ? "13px 14px 13px 42px" : "12px 14px",
           borderRadius: "12px",
           border: "1px solid #2a2a2a",
           background: "#141414",

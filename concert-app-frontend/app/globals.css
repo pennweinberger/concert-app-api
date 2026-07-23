@@ -24,3 +24,50 @@ body {
   color: var(--foreground);
   font-family: var(--font-body), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
+
+/* Responsive masthead: full link row on desktop, compact row with a
+   profile menu on mobile / narrow tablet. Both variants render; CSS
+   toggles which is visible so there is no hydration flash. `display`
+   lives here (not inline) so the media query can override it. */
+.masthead-nav-desktop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 16px;
+}
+.masthead-nav-compact {
+  display: none;
+  align-items: center;
+  gap: 14px;
+}
+@media (max-width: 768px) {
+  .masthead-nav-desktop {
+    display: none;
+  }
+  .masthead-nav-compact {
+    display: flex;
+  }
+}
+
+/* Profile-menu items: monochrome, subtle hover/focus for keyboard use. */
+.profile-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #d8d1c2;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.profile-menu-item:hover,
+.profile-menu-item:focus-visible {
+  background: #1e1e1e;
+  color: #f4f1ea;
+  outline: none;
+}
