@@ -2015,6 +2015,18 @@ app.get("/users/:handle", async (request, reply) => {
         avatarUrl: true,
         createdAt: true,
         anonymizedAt: true,
+        // Counts folded into this query on purpose. DATABASE_URL pins
+        // connection_limit=1, so a Promise.all of separate queries still
+        // serializes on the single connection — the only way to cut
+        // latency is to issue FEWER round-trips, not concurrent ones.
+        _count: {
+          select: {
+            followers: true,
+            following: true,
+            attendances: true,
+            reviews: NOT_BLOCKED_COUNT,
+          },
+        },
       },
     });
 
@@ -2044,31 +2056,8 @@ app.get("/users/:handle", async (request, reply) => {
     // (localDate, showId) can be added later without reshaping this.
     const HISTORY_CAP = 60;
 
-    // Everything below needs only user.id, so it all goes in ONE parallel
-    // wave. Previously these ran as five sequential awaits, and against a
-    // pooled remote Postgres each wave costs a full round-trip — that
-    // alone made this endpoint ~2-4x slower than comparable ones.
-    const [
-      attendanceShows,
-      reviewStats,
-      followerCount,
-      followingCount,
-      viewerFollow,
-      reviews,
-      historyReviews,
-      historyAttendances,
-    ] = await Promise.all([
-      prisma.attendance.findMany({
-        where: { userId: user.id },
-        select: { show: { select: { artistId: true, venueId: true } } },
-      }),
-      prisma.review.aggregate({
-        where: { ...NOT_BLOCKED, userId: user.id },
-        _count: true,
-        _avg: { ratingOverall: true },
-      }),
-      prisma.follow.count({ where: { followingId: user.id } }),
-      prisma.follow.count({ where: { followerId: user.id } }),
+    const [viewerFollow, historyReviews, historyAttendances] =
+      await Promise.all([
       viewerId && viewerId !== user.id
         ? prisma.follow.findUnique({
             where: {
@@ -2079,22 +2068,6 @@ app.get("/users/:handle", async (request, reply) => {
             },
           })
         : Promise.resolve(null),
-      // Paginated reviews page (legacy `reviews` field).
-      prisma.review.findMany({
-        where: {
-          ...NOT_BLOCKED,
-          userId: user.id,
-          ...(cursor ? { publishedAt: { lt: cursor } } : {}),
-        },
-        orderBy: { publishedAt: "desc" },
-        take: limit + 1,
-        include: {
-          show: { include: { artist: true, venue: true } },
-          _count: {
-            select: { likes: true, comments: NOT_BLOCKED_COUNT },
-          },
-        },
-      }),
       // History: visible reviews, newest show first.
       prisma.review.findMany({
         where: { ...NOT_BLOCKED, userId: user.id },
@@ -2133,21 +2106,15 @@ app.get("/users/:handle", async (request, reply) => {
       }),
     ]);
 
-    const attendedShowCount = attendanceShows.length;
-    const artistsSeenCount = new Set(
-      attendanceShows.map((a) => a.show.artistId),
-    ).size;
-    const venuesVisitedCount = new Set(
-      attendanceShows.map((a) => a.show.venueId),
-    ).size;
+    const attendedShowCount = user._count.attendances;
+    const followerCount = user._count.followers;
+    const followingCount = user._count.following;
+    const reviewCount = user._count.reviews;
 
-    const reviewIds = reviews.map((r) => r.id);
-
-    // Viewer liked-state covers the paginated page AND the history.
-    const likedSet = await loadViewerLikedSet(viewerId, [
-      ...reviewIds,
-      ...historyReviews.map((r) => r.id),
-    ]);
+    const likedSet = await loadViewerLikedSet(
+      viewerId,
+      historyReviews.map((r) => r.id),
+    );
 
     const history = [
       ...historyReviews.map((r) => ({
@@ -2175,13 +2142,23 @@ app.get("/users/:handle", async (request, reply) => {
       })
       .slice(0, HISTORY_CAP);
 
-    const reviewsHasMore = reviews.length > limit;
-    const reviewsPage = reviewsHasMore ? reviews.slice(0, limit) : reviews;
-    const reviewsLast = reviewsPage[reviewsPage.length - 1];
-    const reviewsNextCursor =
-      reviewsHasMore && reviewsLast?.publishedAt
-        ? new Date(reviewsLast.publishedAt).toISOString()
-        : null;
+    // Legacy `reviews` field, kept for response-shape compatibility but
+    // now DERIVED from the history reviews instead of costing its own
+    // query. `reviewsNextCursor` is null because history is capped rather
+    // than cursor-paginated (see HISTORY_CAP).
+    const legacyReviews = history
+      .filter((h) => h.review)
+      .slice(0, limit)
+      .map((h) => ({
+        id: h.review!.id,
+        ratingOverall: h.review!.ratingOverall,
+        reviewTextRaw: h.review!.reviewTextRaw,
+        publishedAt: h.review!.publishedAt,
+        likeCount: h.review!.likeCount,
+        commentCount: h.review!.commentCount,
+        liked: h.review!.liked,
+        show: h.show,
+      }));
 
     return {
       id: user.id,
@@ -2190,36 +2167,13 @@ app.get("/users/:handle", async (request, reply) => {
       avatarUrl: user.avatarUrl,
       joinedAt: user.createdAt,
       attendedShowCount,
-      artistsSeenCount,
-      venuesVisitedCount,
-      reviewCount: reviewStats._count,
-      averageRating: Number((reviewStats._avg.ratingOverall ?? 0).toFixed(1)),
+      reviewCount,
       followerCount,
       followingCount,
       followedByMe: !!viewerFollow,
       history,
-      reviews: reviewsPage.map((review) => ({
-        id: review.id,
-        ratingOverall: review.ratingOverall,
-        reviewTextRaw: review.reviewTextRaw,
-        publishedAt: review.publishedAt,
-        likeCount: review._count.likes,
-        commentCount: review._count.comments,
-        liked: likedSet.has(review.id),
-        show: {
-          id: review.show.id,
-          localDate: review.show.localDate,
-          artist: {
-            id: review.show.artist.id,
-            name: review.show.artist.name,
-          },
-          venue: {
-            name: review.show.venue.name,
-            city: review.show.venue.city,
-          },
-        },
-      })),
-      reviewsNextCursor,
+      reviews: legacyReviews,
+      reviewsNextCursor: null,
     };
   } catch (err: any) {
     app.log.error(err);
