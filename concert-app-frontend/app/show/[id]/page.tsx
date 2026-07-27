@@ -236,13 +236,20 @@ export default function ShowPage() {
             </div>
 
             {/* --- Equal secondary actions --- */}
-            <div style={{ display: "flex", gap: "10px", marginTop: "18px" }}>
+            {/* Grid (not flex) so the pair is exactly equal-width: with
+                flex, the anchor's own padding/border made it 26px wider
+                than the attendance button. 1fr 1fr guarantees equality. */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "10px",
+                marginTop: "18px",
+              }}
+            >
               <Link
                 href={`/review/new?showId=${show.id}`}
                 style={{
-                  // minWidth:0 so the pair splits the row evenly instead of
-                  // min-content widening it (which overflowed at 375px).
-                  flex: "1 1 0",
                   minWidth: 0,
                   textAlign: "center",
                   fontSize: "13.5px",
@@ -258,7 +265,7 @@ export default function ShowPage() {
               >
                 Write Review
               </Link>
-              <div style={{ flex: "1 1 0", minWidth: 0 }}>
+              <div style={{ minWidth: 0 }}>
                 <AttendanceButton
                   showId={show.id}
                   initialAttended={show.attendedByMe}
