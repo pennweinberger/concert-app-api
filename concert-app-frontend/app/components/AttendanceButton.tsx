@@ -129,17 +129,15 @@ export default function AttendanceButton({
         style={{
           display: "block",
           width: "100%",
-          padding: "12px",
-          borderRadius: "12px",
-          border: attended
-            ? "1px solid transparent"
-            : "1px solid #f4f1ea",
+          padding: "10px 12px",
+          borderRadius: "8px",
+          border: attended ? "1px solid transparent" : "1px solid #333",
           background: attended ? "#f4f1ea" : "transparent",
           color: attended ? "#0a0a0a" : "#f4f1ea",
           cursor:
             blockedByReview && attended ? "not-allowed" : "pointer",
-          fontSize: "14px",
-          fontWeight: "bold",
+          fontSize: "13.5px",
+          fontWeight: 500,
           fontFamily: "inherit",
           opacity: blockedByReview && attended ? 0.65 : 1,
           boxSizing: "border-box",

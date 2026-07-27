@@ -50,7 +50,10 @@ export default function ReviewCard({
   const hasBody = item.reviewTextRaw.trim().length > 0;
 
   return (
-    <article style={{ position: "relative" }}>
+    <article
+      id={`review-${item.reviewId}`}
+      style={{ position: "relative", scrollMarginTop: "24px" }}
+    >
       {/* Whole-card overlay link to the show — preserves click-anywhere
           navigation. Interactive children re-enable pointer events. */}
       <Link

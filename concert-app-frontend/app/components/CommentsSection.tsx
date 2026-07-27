@@ -27,6 +27,13 @@ type CommentItem = {
 type Props = {
   reviewId: string;
   initialCount: number;
+  /**
+   * "default" keeps the original trigger (💬 text link) used on the
+   * user/artist pages. "editorial" renders a restrained monochrome
+   * outline-icon trigger that sits in a ReviewItem action row (show
+   * page / Phase 2 design). Thread behavior is identical in both.
+   */
+  variant?: "default" | "editorial";
 };
 
 // Flat comments under a single review. Collapsed by default to keep
@@ -35,7 +42,11 @@ type Props = {
 //
 // Visually lighter than reviews: smaller font, no stars, no avatar
 // background fill — these are commentary, not first-class content.
-export default function CommentsSection({ reviewId, initialCount }: Props) {
+export default function CommentsSection({
+  reviewId,
+  initialCount,
+  variant = "default",
+}: Props) {
   const authUser = useAuthUser();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<CommentItem[]>([]);
@@ -183,7 +194,7 @@ export default function CommentsSection({ reviewId, initialCount }: Props) {
   const viewerHandle = authUser?.handle ?? null;
 
   return (
-    <div style={{ marginTop: "12px" }}>
+    <div style={{ marginTop: variant === "editorial" ? 0 : "12px" }}>
       <VerifyToPublishModal
         open={showVerify}
         kind="comment"
@@ -191,26 +202,68 @@ export default function CommentsSection({ reviewId, initialCount }: Props) {
         onRetry={() => submit()}
         retrying={submitting}
       />
-      <button
-        onClick={toggle}
-        style={{
-          background: "transparent",
-          border: "none",
-          color: "#aaa",
-          cursor: "pointer",
-          fontSize: "13px",
-          padding: "4px 0",
-          textAlign: "left",
-        }}
-      >
-        💬{" "}
-        {count === 0
-          ? open
-            ? "Hide"
-            : "Add a comment"
-          : `${count} ${count === 1 ? "comment" : "comments"}`}
-        {count > 0 ? (open ? " — Hide" : " — View") : ""}
-      </button>
+      {variant === "editorial" ? (
+        <button
+          onClick={toggle}
+          aria-expanded={open}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#6a6a6a",
+            cursor: "pointer",
+            fontSize: "13px",
+            padding: 0,
+            fontFamily: "inherit",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "7px",
+            lineHeight: 1,
+          }}
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={{ display: "block" }}
+          >
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+          </svg>
+          <span>
+            {open
+              ? "Hide"
+              : count === 0
+                ? "Add a comment"
+                : `${count} ${count === 1 ? "comment" : "comments"}`}
+          </span>
+        </button>
+      ) : (
+        <button
+          onClick={toggle}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#aaa",
+            cursor: "pointer",
+            fontSize: "13px",
+            padding: "4px 0",
+            textAlign: "left",
+          }}
+        >
+          💬{" "}
+          {count === 0
+            ? open
+              ? "Hide"
+              : "Add a comment"
+            : `${count} ${count === 1 ? "comment" : "comments"}`}
+          {count > 0 ? (open ? " — Hide" : " — View") : ""}
+        </button>
+      )}
 
       {open && (
         <div
