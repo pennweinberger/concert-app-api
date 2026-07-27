@@ -35,11 +35,19 @@ const MUTED = "#8a8a8a";
 
 export default function ReviewItem({
   review,
+  heading,
+  hideByline = false,
   context,
   actions,
   children,
 }: {
   review: ReviewItemData;
+  /** Optional headline rendered ABOVE the rating (e.g. the artist name on
+   *  a profile, where each entry is a different artist). */
+  heading?: ReactNode;
+  /** Suppress the byline where the page already establishes the author —
+   *  a user's own profile. */
+  hideByline?: boolean;
   /** Performance context (venue + date) rendered between the prose and
    *  the byline. Used where each review describes a DIFFERENT event —
    *  the artist page. Omitted on the show page, where the header already
@@ -60,13 +68,18 @@ export default function ReviewItem({
       id={`review-${review.id}`}
       style={{ scrollMarginTop: "24px" }}
     >
+      {/* 0 — Optional headline (profile: the artist) */}
+      {heading}
+
       {/* 1 — Rating */}
-      <StarRating
-        rating={review.ratingOverall}
-        size={14}
-        filledColor={CREAM}
-        emptyColor="#333"
-      />
+      <div style={{ marginTop: heading ? "11px" : 0 }}>
+        <StarRating
+          rating={review.ratingOverall}
+          size={14}
+          filledColor={CREAM}
+          emptyColor="#333"
+        />
+      </div>
 
       {/* 2 — Review prose (the hero) */}
       {hasBody && (
@@ -86,7 +99,9 @@ export default function ReviewItem({
       {/* 3 — Performance context (artist page only) */}
       {context && <div style={{ marginTop: hasBody ? "16px" : "14px" }}>{context}</div>}
 
-      {/* 4 — Author byline: display name primary, handle subdued */}
+      {/* 4 — Author byline: display name primary, handle subdued. Not
+              rendered where the page already establishes the author. */}
+      {!hideByline && (
       <div
         style={{
           display: "flex",
@@ -152,11 +167,12 @@ export default function ReviewItem({
           </Link>
         )}
       </div>
+      )}
 
       {/* 5 — Subdued actions */}
       <div
         style={{
-          marginTop: "12px",
+          marginTop: hideByline ? "14px" : "12px",
           display: "flex",
           alignItems: "flex-start",
           gap: "18px",

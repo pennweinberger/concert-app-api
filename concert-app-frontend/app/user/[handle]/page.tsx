@@ -4,30 +4,41 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { authHeaders, getToken, useAuthUser } from "../../lib/auth";
-import LikeButton from "../../components/LikeButton";
-import StarRating from "../../components/StarRating";
+import Masthead from "../../components/Masthead";
 import FollowButton from "../../components/FollowButton";
 import Avatar from "../../components/Avatar";
 import CommentsSection from "../../components/CommentsSection";
 import ReportMenu from "../../components/ReportMenu";
+import ReviewItem, {
+  type ReviewItemData,
+} from "../../components/ReviewItem";
+import AttendedItem from "../../components/AttendedItem";
+import { formatShowDate } from "../../lib/dateFormat";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
 
-type Review = {
+const CREAM = "#f4f1ea";
+
+type HistoryShow = {
   id: string;
-  ratingOverall: number;
-  reviewTextRaw: string;
-  publishedAt: string | null;
-  likeCount: number;
-  commentCount: number;
-  liked: boolean;
-  show: {
+  localDate: string;
+  artist: { id: string; name: string };
+  venue: { name: string; city: string };
+};
+
+type HistoryItem = {
+  kind: "review" | "attended";
+  show: HistoryShow;
+  review: {
     id: string;
-    localDate: string;
-    artist: { id: string; name: string };
-    venue: { name: string; city: string };
-  };
+    ratingOverall: number;
+    reviewTextRaw: string;
+    publishedAt: string | null;
+    likeCount: number;
+    commentCount: number;
+    liked: boolean;
+  } | null;
 };
 
 type UserDetail = {
@@ -37,14 +48,13 @@ type UserDetail = {
   avatarUrl: string | null;
   joinedAt: string;
   attendedShowCount: number;
-  artistsSeenCount: number;
-  venuesVisitedCount: number;
   reviewCount: number;
-  averageRating: number;
   followerCount: number;
   followingCount: number;
   followedByMe: boolean;
-  reviews: Review[];
+  // Unified concert history. Optional so the frontend degrades gracefully
+  // in the window where it deploys ahead of the backend.
+  history?: HistoryItem[];
 };
 
 export default function UserPage() {
@@ -71,8 +81,8 @@ export default function UserPage() {
     if (!handle) return;
     try {
       const res = await fetch(`${API_BASE}/users/${handle}`, {
-          headers: authHeaders(),
-        });
+        headers: authHeaders(),
+      });
       if (!res.ok) {
         setError(
           res.status === 404
@@ -88,8 +98,6 @@ export default function UserPage() {
     }
   }, [handle]);
 
-  // Initial load — separate inline async to keep setState calls out of
-  // the useEffect body (so the react-hooks/set-state-in-effect rule passes).
   useEffect(() => {
     if (!handle) return;
     let cancelled = false;
@@ -124,10 +132,11 @@ export default function UserPage() {
     };
   }, [handle]);
 
-  function startEdit(review: Review) {
-    setEditingId(review.id);
-    setEditRating(review.ratingOverall);
-    setEditText(review.reviewTextRaw);
+  function startEdit(item: HistoryItem) {
+    if (!item.review) return;
+    setEditingId(item.review.id);
+    setEditRating(item.review.ratingOverall);
+    setEditText(item.review.reviewTextRaw);
     setEditError(null);
   }
 
@@ -176,7 +185,6 @@ export default function UserPage() {
 
       setEditingId(null);
       setEditSubmitting(false);
-      // Refetch so the rating and avg stay consistent with the server
       refetchSilent();
     } catch {
       setEditError("Network error. Try again.");
@@ -201,7 +209,6 @@ export default function UserPage() {
         alert(data?.error || `Delete failed (HTTP ${res.status}).`);
         return;
       }
-      // Clear edit state in case the deleted review was being edited
       if (editingId === reviewId) setEditingId(null);
       refetchSilent();
     } catch {
@@ -209,43 +216,42 @@ export default function UserPage() {
     }
   }
 
+  const history = user?.history ?? [];
+
   return (
     <main
       style={{
         background: "#0a0a0a",
         minHeight: "100vh",
-        color: "#f4f1ea",
+        color: CREAM,
         padding: "24px",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "20px" }}>
+        <Masthead />
+
+        <div style={{ marginTop: "24px" }}>
           <Link
             href="/"
             style={{
-              color: "#f4f1ea",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
+              color: "#6f6f6f",
+              fontSize: "13px",
+              textDecoration: "none",
             }}
           >
-            ← Back to feed
+            ← Back
           </Link>
         </div>
 
-        {loading && (
-          <div style={{ color: "#888", fontSize: "14px", padding: "8px 0" }}>
+        {loading && !user && (
+          <div style={{ color: "#888", fontSize: "14px", padding: "20px 0" }}>
             Loading…
           </div>
         )}
 
-        {error && (
+        {!loading && error && (
           <div
-            style={{
-              background: "#1f1f1f",
-              padding: "16px",
-              borderRadius: "12px",
-              color: "#ff8080",
-            }}
+            style={{ color: "#ff8080", fontSize: "14px", padding: "20px 0" }}
           >
             {error}
           </div>
@@ -253,368 +259,392 @@ export default function UserPage() {
 
         {user && (
           <>
+            {/* --- Identity header --- */}
             <div
               style={{
+                marginTop: "20px",
                 display: "flex",
-                alignItems: "center",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
                 gap: "16px",
-                marginBottom: "10px",
               }}
             >
-              <Avatar
-                handle={user.handle}
-                name={user.name}
-                avatarUrl={user.avatarUrl}
-                size={72}
-              />
               <div style={{ minWidth: 0 }}>
-                {user.name ? (
-                  <>
-                    <h1
-                      style={{
-                        fontSize: "28px",
-                        margin: "0 0 2px",
-                        lineHeight: 1.1,
-                        fontFamily: "var(--font-display), sans-serif",
-                        fontWeight: 700,
-                        letterSpacing: "-0.02em",
-                      }}
-                    >
-                      {user.name}
-                    </h1>
-                    <div style={{ color: "#888", fontSize: "14px" }}>
-                      @{user.handle}
-                    </div>
-                  </>
-                ) : (
-                  <h1
+                <Avatar
+                  handle={user.handle}
+                  name={user.name}
+                  avatarUrl={user.avatarUrl}
+                  size={64}
+                />
+                <h1
+                  style={{
+                    margin: "14px 0 0",
+                    fontSize: "26px",
+                    fontWeight: 700,
+                    letterSpacing: "-0.02em",
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {user.name || `@${user.handle}`}
+                </h1>
+                {user.name && (
+                  <div
                     style={{
-                      fontSize: "28px",
-                      margin: 0,
-                      lineHeight: 1.1,
-                      fontFamily: "var(--font-display), sans-serif",
-                      fontWeight: 700,
-                      letterSpacing: "-0.02em",
+                      fontSize: "14px",
+                      color: "#6f6f6f",
+                      marginTop: "3px",
                     }}
                   >
                     @{user.handle}
-                  </h1>
+                  </div>
                 )}
-              </div>
-            </div>
-            <div style={{ color: "#888", fontSize: "13px", marginBottom: "10px" }}>
-              Joined{" "}
-              {new Date(user.joinedAt).toLocaleDateString(undefined, {
-                year: "numeric",
-                month: "long",
-              })}
-            </div>
-            {/* Attendance-derived primary stats: shows attended, distinct
-                artists, distinct venues. Reviews + avg rating sit on a
-                secondary line below. */}
-            <div style={{ color: "#aaa", marginBottom: "6px" }}>
-              {user.attendedShowCount === 0 ? (
-                "No shows attended yet"
-              ) : (
-                <>
-                  <strong style={{ color: "#f4f1ea" }}>
-                    {user.attendedShowCount}
-                  </strong>{" "}
-                  {user.attendedShowCount === 1 ? "show" : "shows"} attended
-                  <span style={{ color: "#444", margin: "0 8px" }}>·</span>
-                  <strong style={{ color: "#f4f1ea" }}>
-                    {user.artistsSeenCount}
-                  </strong>{" "}
-                  {user.artistsSeenCount === 1 ? "artist" : "artists"} seen
-                  <span style={{ color: "#444", margin: "0 8px" }}>·</span>
-                  <strong style={{ color: "#f4f1ea" }}>
-                    {user.venuesVisitedCount}
-                  </strong>{" "}
-                  {user.venuesVisitedCount === 1 ? "venue" : "venues"}{" "}
-                  visited
-                </>
-              )}
-            </div>
-            <div style={{ color: "#aaa", marginBottom: "10px" }}>
-              <strong style={{ color: "#f4f1ea" }}>
-                {user.reviewCount}
-              </strong>{" "}
-              {user.reviewCount === 1 ? "review" : "reviews"} written
-              {user.reviewCount > 0 && (
-                <>
-                  <span style={{ color: "#444", margin: "0 8px" }}>·</span>
-                  {user.averageRating} ★ avg
-                </>
-              )}
-            </div>
-            <div
-              style={{
-                color: "#aaa",
-                fontSize: "14px",
-                marginBottom: isOwnProfile ? "28px" : "16px",
-              }}
-            >
-              <strong style={{ color: "#f4f1ea" }}>{user.followerCount}</strong>{" "}
-              {user.followerCount === 1 ? "follower" : "followers"}
-              <span style={{ color: "#444", margin: "0 8px" }}>·</span>
-              <strong style={{ color: "#f4f1ea" }}>{user.followingCount}</strong>{" "}
-              following
-            </div>
-            {!isOwnProfile && (
-              <div
-                style={{
-                  marginBottom: "28px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                }}
-              >
-                <FollowButton
-                  handle={user.handle}
-                  initialFollowing={user.followedByMe}
-                  initialFollowerCount={user.followerCount}
-                  onChange={({ following, followerCount }) => {
-                    setUser((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            followedByMe: following,
-                            followerCount,
-                          }
-                        : prev,
-                    );
-                  }}
-                />
-                {authUser && (
-                  <ReportMenu targetType="USER" targetId={user.id} />
-                )}
-              </div>
-            )}
-
-            {user.reviews.length === 0 && (
-              <div
-                style={{
-                  background: "#1a1a1a",
-                  padding: "18px",
-                  borderRadius: "16px",
-                  color: "#aaa",
-                }}
-              >
-                Hasn&rsquo;t reviewed any shows yet.
-              </div>
-            )}
-
-            {user.reviews.map((review) => {
-              const isEditing = editingId === review.id;
-              return (
                 <div
-                  key={review.id}
                   style={{
-                    padding: "28px 0",
-                    borderBottom: "1px solid #1f1f1f",
-                    position: "relative",
+                    fontSize: "13px",
+                    color: "#6f6f6f",
+                    marginTop: "10px",
                   }}
                 >
-                  {/* Overlay link to the show — suppressed while editing
-                      so a stray click can't navigate away from the form. */}
-                  {!isEditing && (
-                    <Link
-                      href={`/show/${review.show.id}`}
-                      aria-label={`View show: ${review.show.artist.name} at ${review.show.venue.name}`}
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        zIndex: 0,
-                      }}
-                    />
-                  )}
-                  <div
-                    style={{
-                      position: "relative",
-                      zIndex: 1,
-                      pointerEvents: isEditing ? "auto" : "none",
+                  Joined{" "}
+                  {new Date(user.joinedAt).toLocaleDateString(undefined, {
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </div>
+                <div
+                  style={{
+                    fontSize: "15px",
+                    color: "#d8d1c2",
+                    marginTop: "16px",
+                  }}
+                >
+                  {user.attendedShowCount}{" "}
+                  {user.attendedShowCount === 1 ? "concert" : "concerts"}{" "}
+                  attended
+                  <span style={{ color: "#4a4a4a", margin: "0 7px" }}>•</span>
+                  {user.reviewCount}{" "}
+                  {user.reviewCount === 1 ? "review" : "reviews"}
+                </div>
+                {/* Deliberately quieter than the concert metrics. */}
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    color: "#6f6f6f",
+                    marginTop: "7px",
+                  }}
+                >
+                  Followers {user.followerCount}
+                  <span style={{ color: "#3f3f3f", margin: "0 6px" }}>•</span>
+                  Following {user.followingCount}
+                </div>
+              </div>
+
+              {!isOwnProfile && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    flexShrink: 0,
+                  }}
+                >
+                  <FollowButton
+                    handle={user.handle}
+                    initialFollowing={user.followedByMe}
+                    initialFollowerCount={user.followerCount}
+                    onChange={({ following, followerCount }) => {
+                      setUser((prev) =>
+                        prev
+                          ? { ...prev, followedByMe: following, followerCount }
+                          : prev,
+                      );
                     }}
-                  >
-                    <div style={{ fontSize: "15px" }}>
-                      <Link
-                        href={`/user/${user.handle}`}
-                        style={{
-                          color: "#f4f1ea",
-                          textDecoration: "underline",
-                          textUnderlineOffset: "3px",
-                          fontWeight: "bold",
-                          pointerEvents: "auto",
-                          position: "relative",
-                        }}
-                      >
-                        @{user.handle}
-                      </Link>
-                      <span style={{ color: "#aaa" }}> reviewed </span>
-                      <span style={{ color: "#f4f1ea", fontWeight: "bold" }}>
-                        {review.show.artist.name}
-                      </span>
-                    </div>
-                    <div
+                  />
+                  {authUser && (
+                    <ReportMenu targetType="USER" targetId={user.id} />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Identity -> history transition. */}
+            <div
+              style={{ borderTop: "1px solid #1c1c1c", marginTop: "34px" }}
+            />
+
+            {/* --- Unified concert history --- */}
+            {history.length === 0 && !loading && (
+              <div
+                style={{
+                  color: "#888",
+                  fontSize: "15px",
+                  padding: "28px 0",
+                  lineHeight: 1.6,
+                }}
+              >
+                {isOwnProfile ? (
+                  <>
+                    No concerts yet. Mark a show as attended or{" "}
+                    <Link
+                      href="/review/new"
                       style={{
-                        color: "#aaa",
-                        fontSize: "14px",
-                        marginTop: "4px",
+                        color: CREAM,
+                        textDecoration: "underline",
+                        textUnderlineOffset: "3px",
                       }}
                     >
-                      {review.show.venue.name}
-                      <span style={{ color: "#555", margin: "0 6px" }}>·</span>
-                      {review.show.venue.city}
-                    </div>
-                    {!isEditing && (
-                      <div style={{ marginTop: "8px" }}>
-                        <StarRating rating={review.ratingOverall} />
-                      </div>
-                    )}
+                      write a review
+                    </Link>{" "}
+                    to start your history.
+                  </>
+                ) : (
+                  <>No concerts in @{user.handle}&rsquo;s history yet.</>
+                )}
+              </div>
+            )}
 
-                  {isEditing ? (
-                    <div style={{ marginTop: "12px" }}>
-                      <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
-                        {[1, 2, 3, 4, 5].map((n) => (
-                          <button
-                            key={n}
-                            onClick={() => setEditRating(n)}
-                            aria-label={`${n} star${n === 1 ? "" : "s"}`}
+            {history.length > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "54px",
+                  marginTop: "34px",
+                }}
+              >
+                {history.map((item) => {
+                  const artistHeading = (
+                    <h2
+                      style={{
+                        margin: 0,
+                        fontSize: "24px",
+                        fontWeight: 700,
+                        letterSpacing: "-0.02em",
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      <Link
+                        href={`/artist/${item.show.artist.id}`}
+                        style={{ color: CREAM, textDecoration: "none" }}
+                      >
+                        {item.show.artist.name}
+                      </Link>
+                    </h2>
+                  );
+
+                  if (item.kind === "attended" || !item.review) {
+                    return (
+                      <AttendedItem
+                        key={`a:${item.show.id}`}
+                        show={item.show}
+                        isOwner={isOwnProfile}
+                      />
+                    );
+                  }
+
+                  const review = item.review;
+                  const isEditing = editingId === review.id;
+
+                  // Editing replaces the review body with the form so a
+                  // stray click can't navigate away mid-edit.
+                  if (isEditing) {
+                    return (
+                      <div key={`r:${review.id}`}>
+                        {artistHeading}
+                        <div style={{ marginTop: "12px" }}>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <button
+                                key={n}
+                                onClick={() => setEditRating(n)}
+                                aria-label={`${n} star${n === 1 ? "" : "s"}`}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  padding: 0,
+                                  fontSize: "24px",
+                                  color: n <= editRating ? CREAM : "#333",
+                                  lineHeight: 1,
+                                }}
+                              >
+                                ★
+                              </button>
+                            ))}
+                          </div>
+                          <textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            rows={4}
                             style={{
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              padding: 0,
-                              fontSize: "26px",
-                              color: n <= editRating ? "#fbbf24" : "#444",
-                              lineHeight: 1,
+                              width: "100%",
+                              marginTop: "12px",
+                              padding: "12px",
+                              borderRadius: "10px",
+                              background: "#141414",
+                              color: CREAM,
+                              border: "1px solid #2a2a2a",
+                              resize: "vertical",
+                              fontFamily: "inherit",
+                              fontSize: "15px",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                          {editError && (
+                            <div
+                              style={{
+                                color: "#ff8080",
+                                fontSize: "13px",
+                                marginTop: "8px",
+                              }}
+                            >
+                              {editError}
+                            </div>
+                          )}
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "10px",
+                              marginTop: "12px",
                             }}
                           >
-                            ★
-                          </button>
-                        ))}
-                      </div>
-                      <textarea
-                        value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
-                        rows={4}
-                        style={{
-                          width: "100%",
-                          padding: "10px",
-                          borderRadius: "10px",
-                          background: "#111",
-                          color: "#f4f1ea",
-                          border: "1px solid #333",
-                          resize: "vertical",
-                          fontFamily: "inherit",
-                          fontSize: "14px",
-                          boxSizing: "border-box",
-                          marginBottom: "10px",
-                        }}
-                      />
-                      {editError && (
-                        <div style={{ color: "#ff8080", fontSize: "13px", marginBottom: "10px" }}>
-                          {editError}
-                        </div>
-                      )}
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button
-                          onClick={() => saveEdit(review.id)}
-                          disabled={editSubmitting}
-                          style={{
-                            padding: "8px 14px",
-                            borderRadius: "10px",
-                            border: "none",
-                            background: editSubmitting ? "#555" : "#f4f1ea",
-                            color: editSubmitting ? "#aaa" : "#0a0a0a",
-                            cursor: editSubmitting ? "not-allowed" : "pointer",
-                            fontWeight: "bold",
-                            fontSize: "14px",
-                          }}
-                        >
-                          {editSubmitting ? "Saving…" : "Save"}
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          disabled={editSubmitting}
-                          style={{
-                            padding: "8px 14px",
-                            borderRadius: "10px",
-                            border: "1px solid #333",
-                            background: "transparent",
-                            color: "#aaa",
-                            cursor: editSubmitting ? "not-allowed" : "pointer",
-                            fontSize: "14px",
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ marginTop: "10px" }}>{review.reviewTextRaw}</div>
-                      <div
-                        style={{
-                          marginTop: "12px",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "12px",
-                          fontSize: "13px",
-                          pointerEvents: "auto",
-                          position: "relative",
-                        }}
-                      >
-                        <LikeButton
-                          reviewId={review.id}
-                          initialLiked={review.liked}
-                          initialLikeCount={review.likeCount}
-                        />
-                        {isOwnProfile && (
-                          <>
-                            <span style={{ color: "#444" }}>·</span>
                             <button
-                              onClick={() => startEdit(review)}
+                              onClick={() => saveEdit(review.id)}
+                              disabled={editSubmitting}
                               style={{
-                                background: "none",
+                                background: editSubmitting ? "#555" : CREAM,
+                                color: editSubmitting ? "#aaa" : "#0a0a0a",
                                 border: "none",
-                                padding: 0,
-                                color: "#f4f1ea",
-                                cursor: "pointer",
-                                fontSize: "13px",
+                                borderRadius: "8px",
+                                padding: "8px 16px",
+                                fontWeight: 600,
+                                fontSize: "13.5px",
+                                cursor: editSubmitting
+                                  ? "not-allowed"
+                                  : "pointer",
                                 fontFamily: "inherit",
-                                textDecoration: "underline",
-                                textUnderlineOffset: "3px",
                               }}
                             >
-                              Edit
+                              {editSubmitting ? "Saving…" : "Save"}
                             </button>
-                            <span style={{ color: "#444" }}>·</span>
                             <button
-                              onClick={() => deleteReview(review.id)}
+                              onClick={cancelEdit}
                               style={{
                                 background: "none",
-                                border: "none",
-                                padding: 0,
-                                color: "#ff8080",
+                                color: "#aaa",
+                                border: "1px solid #333",
+                                borderRadius: "8px",
+                                padding: "8px 16px",
+                                fontSize: "13.5px",
                                 cursor: "pointer",
-                                fontSize: "13px",
+                                fontFamily: "inherit",
                               }}
                             >
-                              Delete
+                              Cancel
                             </button>
-                          </>
-                        )}
+                          </div>
+                        </div>
                       </div>
-                    </>
-                  )}
-                  <CommentsSection
-                    reviewId={review.id}
-                    initialCount={review.commentCount}
-                  />
-                  </div>
-                </div>
-              );
-            })}
+                    );
+                  }
+
+                  const reviewData: ReviewItemData = {
+                    id: review.id,
+                    userHandle: user.handle,
+                    userName: user.name,
+                    userAvatarUrl: user.avatarUrl,
+                    ratingOverall: review.ratingOverall,
+                    reviewTextRaw: review.reviewTextRaw,
+                    likeCount: review.likeCount,
+                    commentCount: review.commentCount,
+                    liked: review.liked,
+                  };
+
+                  return (
+                    <ReviewItem
+                      key={`r:${review.id}`}
+                      review={reviewData}
+                      heading={artistHeading}
+                      // The header already establishes whose reviews these are.
+                      hideByline
+                      context={
+                        <Link
+                          href={`/show/${item.show.id}`}
+                          style={{
+                            display: "inline-block",
+                            textDecoration: "none",
+                          }}
+                        >
+                          <div
+                            style={{ fontSize: "14px", color: "#8a8a8a" }}
+                          >
+                            {item.show.venue.name}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "13.5px",
+                              color: "#6f6f6f",
+                              marginTop: "1px",
+                            }}
+                          >
+                            {formatShowDate(item.show.localDate, { longMonth: true })}
+                          </div>
+                        </Link>
+                      }
+                      actions={
+                        <>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <CommentsSection
+                              reviewId={review.id}
+                              initialCount={review.commentCount}
+                              variant="editorial"
+                            />
+                          </div>
+                          {isOwnProfile && (
+                            <span
+                              style={{
+                                display: "flex",
+                                gap: "14px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <button
+                                onClick={() => startEdit(item)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  padding: 0,
+                                  color: "#6a6a6a",
+                                  fontSize: "13px",
+                                  cursor: "pointer",
+                                  fontFamily: "inherit",
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => deleteReview(review.id)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  padding: 0,
+                                  color: "#6a6a6a",
+                                  fontSize: "13px",
+                                  cursor: "pointer",
+                                  fontFamily: "inherit",
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </span>
+                          )}
+                        </>
+                      }
+                    />
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </div>

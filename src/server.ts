@@ -2089,7 +2089,88 @@ app.get("/users/:handle", async (request, reply) => {
     });
 
     const reviewIds = reviews.map((r) => r.id);
-    const likedSet = await loadViewerLikedSet(viewerId, reviewIds);
+
+    // --- Unified concert history -------------------------------------
+    // One chronological record of this person's concert life: reviews
+    // they wrote, plus shows they marked attended but have NOT reviewed.
+    // A show appears exactly once — if a VISIBLE review exists it renders
+    // as a review; otherwise (including when their only review is
+    // BLOCKED) it falls back to attended-only, so a concert is never
+    // erased from their history.
+    //
+    // Capped for now, ordered by show date, so a cursor on
+    // (localDate, showId) can be added later without reshaping this.
+    const HISTORY_CAP = 60;
+
+    const [historyReviews, historyAttendances] = await Promise.all([
+      prisma.review.findMany({
+        where: { ...NOT_BLOCKED, userId: user.id },
+        orderBy: [{ show: { localDate: "desc" } }, { id: "desc" }],
+        take: HISTORY_CAP,
+        include: {
+          show: {
+            select: {
+              id: true,
+              localDate: true,
+              artist: { select: { id: true, name: true } },
+              venue: { select: { name: true, city: true } },
+            },
+          },
+          _count: { select: { likes: true, comments: NOT_BLOCKED_COUNT } },
+        },
+      }),
+      prisma.attendance.findMany({
+        where: {
+          userId: user.id,
+          // No VISIBLE review by this user on that show.
+          show: { reviews: { none: { ...NOT_BLOCKED, userId: user.id } } },
+        },
+        orderBy: [{ show: { localDate: "desc" } }, { id: "desc" }],
+        take: HISTORY_CAP,
+        select: {
+          show: {
+            select: {
+              id: true,
+              localDate: true,
+              artist: { select: { id: true, name: true } },
+              venue: { select: { name: true, city: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    // Viewer liked-state covers the paginated page AND the history.
+    const likedSet = await loadViewerLikedSet(viewerId, [
+      ...reviewIds,
+      ...historyReviews.map((r) => r.id),
+    ]);
+
+    const history = [
+      ...historyReviews.map((r) => ({
+        kind: "review" as const,
+        show: r.show,
+        review: {
+          id: r.id,
+          ratingOverall: r.ratingOverall,
+          reviewTextRaw: r.reviewTextRaw,
+          publishedAt: r.publishedAt,
+          likeCount: r._count.likes,
+          commentCount: r._count.comments,
+          liked: likedSet.has(r.id),
+        },
+      })),
+      ...historyAttendances.map((a) => ({
+        kind: "attended" as const,
+        show: a.show,
+        review: null,
+      })),
+    ]
+      .sort((a, b) => {
+        const d = b.show.localDate.getTime() - a.show.localDate.getTime();
+        return d !== 0 ? d : b.show.id.localeCompare(a.show.id);
+      })
+      .slice(0, HISTORY_CAP);
 
     const reviewsHasMore = reviews.length > limit;
     const reviewsPage = reviewsHasMore ? reviews.slice(0, limit) : reviews;
@@ -2113,6 +2194,7 @@ app.get("/users/:handle", async (request, reply) => {
       followerCount,
       followingCount,
       followedByMe: !!viewerFollow,
+      history,
       reviews: reviewsPage.map((review) => ({
         id: review.id,
         ratingOverall: review.ratingOverall,
