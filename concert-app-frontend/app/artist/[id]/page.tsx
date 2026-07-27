@@ -4,30 +4,21 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { authHeaders } from "../../lib/auth";
-import { isDeletedHandle, DELETED_USER_LABEL } from "../../lib/displayUser";
-import LikeButton from "../../components/LikeButton";
+import Masthead from "../../components/Masthead";
 import StarRating from "../../components/StarRating";
-import Avatar from "../../components/Avatar";
 import CommentsSection from "../../components/CommentsSection";
+import ReviewItem, {
+  type ReviewItemData,
+} from "../../components/ReviewItem";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
 
-type Review = {
-  id: string;
-  userHandle: string;
-  userName: string | null;
-  userAvatarUrl: string | null;
-  ratingOverall: number;
-  reviewTextRaw: string;
-  likeCount: number;
-  commentCount: number;
-  liked: boolean;
+type Review = ReviewItemData & {
   show: {
     id: string;
     localDate: string;
-    // Optional during the brief window where the frontend has deployed
-    // ahead of the backend (the `venue` field was added in the same push).
+    // Optional for resilience if the backend ever omits it.
     venue?: { name: string; city: string };
   };
 };
@@ -40,6 +31,10 @@ type Artist = {
   reviews: Review[];
 };
 
+type SortMode = "top" | "recent";
+
+const CREAM = "#f4f1ea";
+
 export default function ArtistPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
@@ -47,6 +42,9 @@ export default function ArtistPage() {
   const [artist, setArtist] = useState<Artist | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Top is the default: the artist page is about which performances
+  // resonated most across the whole history, not the latest activity.
+  const [sort, setSort] = useState<SortMode>("top");
 
   useEffect(() => {
     if (!id) return;
@@ -57,7 +55,9 @@ export default function ArtistPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE}/artists/${id}`, {
+        // Sorting is server-side so "Top" ranks the artist's entire
+        // review history, not just the most recent page.
+        const res = await fetch(`${API_BASE}/artists/${id}?sort=${sort}`, {
           headers: authHeaders(),
         });
         if (!res.ok) {
@@ -83,45 +83,42 @@ export default function ArtistPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, sort]);
 
   return (
     <main
       style={{
         background: "#0a0a0a",
         minHeight: "100vh",
-        color: "#f4f1ea",
+        color: CREAM,
         padding: "24px",
       }}
     >
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "20px" }}>
+        <Masthead />
+
+        <div style={{ marginTop: "24px" }}>
           <Link
             href="/"
             style={{
-              color: "#f4f1ea",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
+              color: "#6f6f6f",
+              fontSize: "13px",
+              textDecoration: "none",
             }}
           >
-            ← Back to feed
+            ← Back
           </Link>
         </div>
 
-        {loading && (
-          <div style={{ color: "#888", fontSize: "14px", padding: "8px 0" }}>
+        {loading && !artist && (
+          <div style={{ color: "#888", fontSize: "14px", padding: "20px 0" }}>
             Loading…
           </div>
         )}
 
-        {error && (
+        {!loading && error && (
           <div
-            style={{
-              background: "#1f1f1f",
-              padding: "16px",
-              borderRadius: "12px",
-              color: "#ff8080",
-            }}
+            style={{ color: "#ff8080", fontSize: "14px", padding: "20px 0" }}
           >
             {error}
           </div>
@@ -129,173 +126,205 @@ export default function ArtistPage() {
 
         {artist && (
           <>
-            <h1
-              style={{
-                fontSize: "38px",
-                marginBottom: "10px",
-                fontFamily: "var(--font-display), sans-serif",
-                fontWeight: 700,
-                letterSpacing: "-0.02em",
-              }}
-            >
-              {artist.name}
-            </h1>
-
-            <div style={{ color: "#aaa", marginBottom: "24px" }}>
-              {artist.averageRating} ★ • {artist.reviewCount}{" "}
-              {artist.reviewCount === 1 ? "Review" : "Reviews"}
-            </div>
-
-            {artist.reviews.length === 0 && (
-              <div
+            {/* --- Artist summary --- */}
+            <div style={{ marginTop: "18px" }}>
+              <h1
                 style={{
-                  background: "#1a1a1a",
-                  padding: "18px",
-                  borderRadius: "16px",
-                  color: "#aaa",
+                  margin: 0,
+                  fontSize: "32px",
+                  fontWeight: 700,
+                  letterSpacing: "-0.02em",
+                  lineHeight: 1.1,
                 }}
               >
-                No reviews yet.
+                {artist.name}
+              </h1>
+
+              {artist.reviewCount > 0 ? (
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: "11px",
+                      marginTop: "14px",
+                    }}
+                  >
+                    <StarRating
+                      rating={Math.round(artist.averageRating)}
+                      size={15}
+                      filledColor={CREAM}
+                      emptyColor="#333"
+                    />
+                    <span
+                      style={{
+                        fontSize: "22px",
+                        fontWeight: 700,
+                        letterSpacing: "-0.01em",
+                      }}
+                    >
+                      {artist.averageRating}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "14px",
+                      color: "#8a8a8a",
+                      marginTop: "6px",
+                    }}
+                  >
+                    {artist.reviewCount}{" "}
+                    {artist.reviewCount === 1 ? "review" : "reviews"}
+                  </div>
+                </>
+              ) : (
+                <div
+                  style={{
+                    fontSize: "14px",
+                    color: "#8a8a8a",
+                    marginTop: "14px",
+                  }}
+                >
+                  No reviews yet
+                </div>
+              )}
+            </div>
+
+            {/* --- Reviews section: heading + sort --- */}
+            {artist.reviewCount > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  marginTop: "38px",
+                }}
+              >
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: "15px",
+                    fontWeight: 600,
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  Reviews
+                </h2>
+                <div
+                  style={{ display: "flex", gap: "16px" }}
+                  role="tablist"
+                  aria-label="Review sort"
+                >
+                  {(["top", "recent"] as const).map((mode) => {
+                    const active = sort === mode;
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() => setSort(mode)}
+                        role="tab"
+                        aria-selected={active}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          borderBottom: active
+                            ? "2px solid #f4f1ea"
+                            : "2px solid transparent",
+                          padding: "4px 0",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          fontFamily: "inherit",
+                          color: active ? CREAM : "#666",
+                          fontWeight: active ? 600 : 400,
+                        }}
+                      >
+                        {mode === "top" ? "Top" : "Recent"}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
-            {artist.reviews.map((review) => (
+            {artist.reviews.length === 0 && !loading && (
               <div
-                key={review.id}
                 style={{
-                  padding: "28px 0",
-                  borderBottom: "1px solid #1f1f1f",
-                  position: "relative",
+                  color: "#888",
+                  fontSize: "15px",
+                  padding: "24px 0",
+                  lineHeight: 1.6,
                 }}
               >
-                <Link
-                  href={`/show/${review.show.id}`}
-                  aria-label={`View show at ${review.show.venue?.name ?? "venue"}`}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    zIndex: 0,
-                  }}
-                />
-                <div
-                  style={{
-                    position: "relative",
-                    zIndex: 1,
-                    pointerEvents: "none",
-                    display: "flex",
-                    gap: "12px",
-                  }}
-                >
-                  {isDeletedHandle(review.userHandle) ? (
-                    <div
-                      aria-label="deleted user"
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: "50%",
-                        background: "#2a2a2a",
-                        flexShrink: 0,
-                        position: "relative",
-                      }}
-                    />
-                  ) : (
-                    <Link
-                      href={`/user/${review.userHandle}`}
-                      aria-label={`View @${review.userHandle}`}
-                      style={{
-                        pointerEvents: "auto",
-                        position: "relative",
-                        flexShrink: 0,
-                        textDecoration: "none",
-                      }}
-                    >
-                      <Avatar
-                        handle={review.userHandle}
-                        name={review.userName}
-                        avatarUrl={review.userAvatarUrl}
-                        size={36}
-                      />
-                    </Link>
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "15px" }}>
-                      {review.userName && !isDeletedHandle(review.userHandle) && (
-                        <span
-                          style={{ color: "#f4f1ea", fontWeight: "bold" }}
-                        >
-                          {review.userName}{" "}
-                        </span>
-                      )}
-                      {isDeletedHandle(review.userHandle) ? (
-                        <span style={{ color: "#888" }}>{DELETED_USER_LABEL}</span>
-                      ) : (
-                        <Link
-                          href={`/user/${review.userHandle}`}
+                No reviews of {artist.name} yet.
+              </div>
+            )}
+
+            {artist.reviews.length > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "58px",
+                  marginTop: "34px",
+                  opacity: loading ? 0.5 : 1,
+                  transition: "opacity 120ms ease",
+                }}
+              >
+                {artist.reviews.map((review) => (
+                  <ReviewItem
+                    key={review.id}
+                    review={review}
+                    context={
+                      // Performance context — the venue/date IS the story
+                      // on this page, and links to that specific show.
+                      <Link
+                        href={`/show/${review.show.id}`}
+                        style={{
+                          display: "inline-block",
+                          textDecoration: "none",
+                        }}
+                      >
+                        {review.show.venue?.name && (
+                          <div
+                            style={{
+                              fontSize: "15px",
+                              fontWeight: 500,
+                              color: "#d8d1c2",
+                            }}
+                          >
+                            {review.show.venue.name}
+                          </div>
+                        )}
+                        <div
                           style={{
-                            color: "#f4f1ea",
-                            textDecoration: "underline",
-                            textUnderlineOffset: "3px",
-                            fontWeight: review.userName ? "normal" : "bold",
-                            pointerEvents: "auto",
-                            position: "relative",
+                            fontSize: "13.5px",
+                            color: "#6f6f6f",
+                            marginTop: "2px",
                           }}
                         >
-                          @{review.userHandle}
-                        </Link>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        color: "#aaa",
-                        fontSize: "14px",
-                        marginTop: "4px",
-                      }}
-                    >
-                      {review.show.venue?.name && (
-                        <>
-                          {review.show.venue.name}
-                          <span style={{ color: "#555", margin: "0 6px" }}>
-                            ·
-                          </span>
-                        </>
-                      )}
-                      {new Date(review.show.localDate).toLocaleDateString(
-                        undefined,
-                        {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        },
-                      )}
-                    </div>
-                    <div style={{ marginTop: "8px" }}>
-                      <StarRating rating={review.ratingOverall} />
-                    </div>
-                    <div style={{ marginTop: "10px" }}>
-                      {review.reviewTextRaw}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: "12px",
-                        pointerEvents: "auto",
-                        position: "relative",
-                        display: "inline-block",
-                      }}
-                    >
-                      <LikeButton
-                        reviewId={review.id}
-                        initialLiked={review.liked}
-                        initialLikeCount={review.likeCount}
-                      />
-                    </div>
-                  </div>
-                  <CommentsSection
-                    reviewId={review.id}
-                    initialCount={review.commentCount}
+                          {new Date(review.show.localDate).toLocaleDateString(
+                            undefined,
+                            {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                            },
+                          )}
+                        </div>
+                      </Link>
+                    }
+                    actions={
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <CommentsSection
+                          reviewId={review.id}
+                          initialCount={review.commentCount}
+                          variant="editorial"
+                        />
+                      </div>
+                    }
                   />
-                </div>
+                ))}
               </div>
-            ))}
+            )}
           </>
         )}
       </div>

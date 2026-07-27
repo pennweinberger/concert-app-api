@@ -35,10 +35,16 @@ const MUTED = "#8a8a8a";
 
 export default function ReviewItem({
   review,
+  context,
   actions,
   children,
 }: {
   review: ReviewItemData;
+  /** Performance context (venue + date) rendered between the prose and
+   *  the byline. Used where each review describes a DIFFERENT event —
+   *  the artist page. Omitted on the show page, where the header already
+   *  establishes the single performance. */
+  context?: ReactNode;
   /** Extra controls rendered in the subdued action row after the like
    *  button (e.g. a comments trigger, a report menu). */
   actions?: ReactNode;
@@ -77,13 +83,16 @@ export default function ReviewItem({
         </p>
       )}
 
-      {/* 3 — Author byline: display name primary, handle subdued */}
+      {/* 3 — Performance context (artist page only) */}
+      {context && <div style={{ marginTop: hasBody ? "16px" : "14px" }}>{context}</div>}
+
+      {/* 4 — Author byline: display name primary, handle subdued */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           gap: "8px",
-          marginTop: hasBody ? "16px" : "14px",
+          marginTop: context ? "14px" : hasBody ? "16px" : "14px",
         }}
       >
         {deleted ? (
@@ -144,7 +153,7 @@ export default function ReviewItem({
         )}
       </div>
 
-      {/* 4 — Subdued actions */}
+      {/* 5 — Subdued actions */}
       <div
         style={{
           marginTop: "12px",

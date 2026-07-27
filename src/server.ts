@@ -1655,9 +1655,18 @@ app.get("/feed", async (request, reply) => {
 app.get("/artists/:id", async (request, reply) => {
   const { id } = request.params as { id: string };
   const viewerId = await getOptionalUserId(request);
-  const query = request.query as { cursor?: string; limit?: string };
+  const query = request.query as {
+    cursor?: string;
+    limit?: string;
+    sort?: string;
+  };
   const limit = parseLimit(query.limit);
   const cursor = parseCursor(query.cursor);
+  // "top" ranks by likes across the artist's WHOLE review history (the
+  // artist page's default) rather than only the most recent page. Cursor
+  // pagination is publishedAt-based, so it only applies to "recent";
+  // top returns a single ranked page and a null cursor.
+  const sortTop = query.sort === "top";
 
   try {
     const artist = await prisma.artist.findUnique({
@@ -1676,14 +1685,18 @@ app.get("/artists/:id", async (request, reply) => {
       _avg: { ratingOverall: true },
     });
 
-    // Paginated reviews page.
+    // Reviews page. "recent" = publishedAt desc with cursor pagination;
+    // "top" = most-liked first (ties broken by recency) across the full
+    // history, unpaginated for now.
     const reviews = await prisma.review.findMany({
       where: {
         ...NOT_BLOCKED,
         show: { artistId: id },
-        ...(cursor ? { publishedAt: { lt: cursor } } : {}),
+        ...(cursor && !sortTop ? { publishedAt: { lt: cursor } } : {}),
       },
-      orderBy: { publishedAt: "desc" },
+      orderBy: sortTop
+        ? [{ likes: { _count: "desc" } }, { publishedAt: "desc" }]
+        : [{ publishedAt: "desc" }],
       take: limit + 1,
       include: {
         user: true,
@@ -1709,14 +1722,16 @@ app.get("/artists/:id", async (request, reply) => {
     const reviewsHasMore = reviews.length > limit;
     const reviewsPage = reviewsHasMore ? reviews.slice(0, limit) : reviews;
     const reviewsLast = reviewsPage[reviewsPage.length - 1];
+    // Cursor is publishedAt-based, which is meaningless under top-ranking.
     const reviewsNextCursor =
-      reviewsHasMore && reviewsLast?.publishedAt
+      !sortTop && reviewsHasMore && reviewsLast?.publishedAt
         ? new Date(reviewsLast.publishedAt).toISOString()
         : null;
 
     return {
       id: artist.id,
       name: artist.name,
+      sort: sortTop ? "top" : "recent",
       averageRating: Number((reviewStats._avg.ratingOverall ?? 0).toFixed(1)),
       reviewCount: reviewStats._count,
       reviews: reviewsPage.map((review) => ({
