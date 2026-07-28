@@ -10,6 +10,7 @@ import CommentsSection from "../../components/CommentsSection";
 import ReviewItem, {
   type ReviewItemData,
 } from "../../components/ReviewItem";
+import LoadMore from "../../components/LoadMore";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -28,9 +29,12 @@ type ShowDetail = {
   attendanceCount: number;
   attendedByMe: boolean;
   reviews: Review[];
+  reviewsNextCursor?: string | null;
 };
 
 type SortMode = "top" | "recent";
+
+const PAGE_SIZE = 20;
 
 export default function ShowPage() {
   const params = useParams<{ id: string }>();
@@ -42,6 +46,9 @@ export default function ShowPage() {
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState<SortMode>("recent");
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
 
   // True when the signed-in viewer has a review on this show. Disables
   // unattend (the server returns 409 anyway, but the UI should reflect
@@ -60,9 +67,10 @@ export default function ShowPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE}/shows/${id}`, {
-          headers: authHeaders(),
-        });
+        const res = await fetch(
+          `${API_BASE}/shows/${id}?limit=${PAGE_SIZE}`,
+          { headers: authHeaders() },
+        );
         if (!res.ok) {
           if (!cancelled)
             setError(
@@ -73,7 +81,10 @@ export default function ShowPage() {
           return;
         }
         const data: ShowDetail = await res.json();
-        if (!cancelled) setShow(data);
+        if (!cancelled) {
+          setShow(data);
+          setNextCursor(data.reviewsNextCursor ?? null);
+        }
       } catch {
         if (!cancelled) setError("Couldn't load this show. Try refreshing.");
       } finally {
@@ -87,6 +98,34 @@ export default function ShowPage() {
       cancelled = true;
     };
   }, [id]);
+
+  async function loadMore() {
+    if (!id || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/shows/${id}?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(nextCursor)}`,
+        { headers: authHeaders() },
+      );
+      if (!res.ok) {
+        setMoreError("Couldn't load more.");
+        return;
+      }
+      const data: ShowDetail = await res.json();
+      setShow((prev) => {
+        if (!prev) return prev;
+        const seen = new Set(prev.reviews.map((r) => r.id));
+        const fresh = (data.reviews || []).filter((r) => !seen.has(r.id));
+        return { ...prev, reviews: [...prev.reviews, ...fresh] };
+      });
+      setNextCursor(data.reviewsNextCursor ?? null);
+    } catch {
+      setMoreError("Couldn't load more.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   // Rating distribution: index 0 = 5★, index 4 = 1★
   const distribution = useMemo<number[]>(() => {
@@ -361,6 +400,16 @@ export default function ShowPage() {
                     }
                   />
                 ))}
+              </div>
+            )}
+
+            {nextCursor && (
+              <div style={{ marginTop: "48px" }}>
+                <LoadMore
+                  onClick={loadMore}
+                  loading={loadingMore}
+                  error={moreError}
+                />
               </div>
             )}
 

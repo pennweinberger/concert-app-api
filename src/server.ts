@@ -328,6 +328,25 @@ async function requireAdminUserId(
 const DEFAULT_PAGE_LIMIT = 20;
 const MAX_PAGE_LIMIT = 100;
 
+/**
+ * Composite history cursor: "<showLocalDateISO>|<showId>". Needed because
+ * the profile history merges reviews and attendances into one stream
+ * ordered by (show.localDate desc, show.id desc) — a bare timestamp can't
+ * disambiguate shows sharing a date.
+ */
+function parseHistoryCursor(
+  raw: unknown,
+): { localDate: Date; showId: string } | null {
+  if (typeof raw !== "string" || !raw.includes("|")) return null;
+  const idx = raw.indexOf("|");
+  const datePart = raw.slice(0, idx);
+  const showId = raw.slice(idx + 1);
+  if (!showId) return null;
+  const localDate = new Date(datePart);
+  if (Number.isNaN(localDate.getTime())) return null;
+  return { localDate, showId };
+}
+
 /** Parse + clamp a `limit` query param. */
 function parseLimit(raw: unknown): number {
   if (raw === undefined || raw === null || raw === "") {
@@ -1659,14 +1678,25 @@ app.get("/artists/:id", async (request, reply) => {
     cursor?: string;
     limit?: string;
     sort?: string;
+    offset?: string;
   };
   const limit = parseLimit(query.limit);
   const cursor = parseCursor(query.cursor);
   // "top" ranks by likes across the artist's WHOLE review history (the
-  // artist page's default) rather than only the most recent page. Cursor
-  // pagination is publishedAt-based, so it only applies to "recent";
-  // top returns a single ranked page and a null cursor.
+  // artist page's default) rather than only the most recent page.
+  //
+  // The two sorts paginate differently on purpose: "recent" uses the
+  // publishedAt cursor, which is meaningless under like-ranking, so
+  // "top" uses an offset instead. Its ordering carries explicit
+  // tie-breakers (likes -> publishedAt -> id) so that reviews with equal
+  // like counts keep a deterministic order across offset requests and
+  // cannot reshuffle or be skipped between pages.
   const sortTop = query.sort === "top";
+  const rawOffset = Number(query.offset);
+  const offset =
+    sortTop && Number.isFinite(rawOffset) && rawOffset > 0
+      ? Math.floor(rawOffset)
+      : 0;
 
   try {
     const artist = await prisma.artist.findUnique({
@@ -1695,9 +1725,14 @@ app.get("/artists/:id", async (request, reply) => {
         ...(cursor && !sortTop ? { publishedAt: { lt: cursor } } : {}),
       },
       orderBy: sortTop
-        ? [{ likes: { _count: "desc" } }, { publishedAt: "desc" }]
-        : [{ publishedAt: "desc" }],
+        ? [
+            { likes: { _count: "desc" } },
+            { publishedAt: "desc" },
+            { id: "desc" },
+          ]
+        : [{ publishedAt: "desc" }, { id: "desc" }],
       take: limit + 1,
+      ...(sortTop && offset > 0 ? { skip: offset } : {}),
       include: {
         user: true,
         show: {
@@ -1722,16 +1757,20 @@ app.get("/artists/:id", async (request, reply) => {
     const reviewsHasMore = reviews.length > limit;
     const reviewsPage = reviewsHasMore ? reviews.slice(0, limit) : reviews;
     const reviewsLast = reviewsPage[reviewsPage.length - 1];
-    // Cursor is publishedAt-based, which is meaningless under top-ranking.
+    // Cursor is publishedAt-based, which is meaningless under top-ranking:
+    // "recent" paginates by cursor, "top" by offset.
     const reviewsNextCursor =
       !sortTop && reviewsHasMore && reviewsLast?.publishedAt
         ? new Date(reviewsLast.publishedAt).toISOString()
         : null;
+    const topNextOffset =
+      sortTop && reviewsHasMore ? offset + reviewsPage.length : null;
 
     return {
       id: artist.id,
       name: artist.name,
       sort: sortTop ? "top" : "recent",
+      topNextOffset,
       averageRating: Number((reviewStats._avg.ratingOverall ?? 0).toFixed(1)),
       reviewCount: reviewStats._count,
       reviews: reviewsPage.map((review) => ({
@@ -2001,7 +2040,12 @@ app.get("/users/search", async (request, reply) => {
 app.get("/users/:handle", async (request, reply) => {
   const { handle } = request.params as { handle: string };
   const viewerId = await getOptionalUserId(request);
-  const query = request.query as { cursor?: string; limit?: string };
+  const query = request.query as {
+    cursor?: string;
+    limit?: string;
+    historyCursor?: string;
+    historyLimit?: string;
+  };
   const limit = parseLimit(query.limit);
   const cursor = parseCursor(query.cursor);
 
@@ -2052,9 +2096,27 @@ app.get("/users/:handle", async (request, reply) => {
     // BLOCKED) it falls back to attended-only, so a concert is never
     // erased from their history.
     //
-    // Capped for now, ordered by show date, so a cursor on
-    // (localDate, showId) can be added later without reshaping this.
-    const HISTORY_CAP = 60;
+    // Paginated with a COMPOSITE cursor "<showLocalDateISO>|<showId>",
+    // matching the merge order (localDate desc, show.id desc). The same
+    // cursor is pushed into BOTH source queries so the merged stream
+    // pages as one chronological sequence — the client never paginates
+    // reviews and attendance separately.
+    const HISTORY_PAGE = parseLimit(query.historyLimit);
+    const historyCursor = parseHistoryCursor(query.historyCursor);
+    // Each source must supply a full page on its own, since a page can
+    // legitimately be all reviews or all attendances.
+    const HISTORY_FETCH = HISTORY_PAGE + 1;
+    const historyWhereShow = historyCursor
+      ? {
+          OR: [
+            { localDate: { lt: historyCursor.localDate } },
+            {
+              localDate: historyCursor.localDate,
+              id: { lt: historyCursor.showId },
+            },
+          ],
+        }
+      : {};
 
     const [viewerFollow, historyReviews, historyAttendances] =
       await Promise.all([
@@ -2070,9 +2132,16 @@ app.get("/users/:handle", async (request, reply) => {
         : Promise.resolve(null),
       // History: visible reviews, newest show first.
       prisma.review.findMany({
-        where: { ...NOT_BLOCKED, userId: user.id },
-        orderBy: [{ show: { localDate: "desc" } }, { id: "desc" }],
-        take: HISTORY_CAP,
+        where: {
+          ...NOT_BLOCKED,
+          userId: user.id,
+          ...(historyCursor ? { show: historyWhereShow } : {}),
+        },
+        orderBy: [
+          { show: { localDate: "desc" } },
+          { show: { id: "desc" } },
+        ],
+        take: HISTORY_FETCH,
         include: {
           show: {
             select: {
@@ -2089,10 +2158,16 @@ app.get("/users/:handle", async (request, reply) => {
       prisma.attendance.findMany({
         where: {
           userId: user.id,
-          show: { reviews: { none: { ...NOT_BLOCKED, userId: user.id } } },
+          show: {
+            reviews: { none: { ...NOT_BLOCKED, userId: user.id } },
+            ...historyWhereShow,
+          },
         },
-        orderBy: [{ show: { localDate: "desc" } }, { id: "desc" }],
-        take: HISTORY_CAP,
+        orderBy: [
+          { show: { localDate: "desc" } },
+          { show: { id: "desc" } },
+        ],
+        take: HISTORY_FETCH,
         select: {
           show: {
             select: {
@@ -2116,7 +2191,7 @@ app.get("/users/:handle", async (request, reply) => {
       historyReviews.map((r) => r.id),
     );
 
-    const history = [
+    const mergedHistory = [
       ...historyReviews.map((r) => ({
         kind: "review" as const,
         show: r.show,
@@ -2135,12 +2210,21 @@ app.get("/users/:handle", async (request, reply) => {
         show: a.show,
         review: null,
       })),
-    ]
-      .sort((a, b) => {
-        const d = b.show.localDate.getTime() - a.show.localDate.getTime();
-        return d !== 0 ? d : b.show.id.localeCompare(a.show.id);
-      })
-      .slice(0, HISTORY_CAP);
+    ].sort((a, b) => {
+      const d = b.show.localDate.getTime() - a.show.localDate.getTime();
+      return d !== 0 ? d : b.show.id.localeCompare(a.show.id);
+    });
+
+    // Trim the merged stream to one page. Because each source fetched a
+    // full page + 1, anything beyond the page boundary is guaranteed to
+    // be re-fetchable from the cursor, so nothing is skipped.
+    const historyHasMore = mergedHistory.length > HISTORY_PAGE;
+    const history = mergedHistory.slice(0, HISTORY_PAGE);
+    const historyLast = history[history.length - 1];
+    const historyNextCursor =
+      historyHasMore && historyLast
+        ? `${historyLast.show.localDate.toISOString()}|${historyLast.show.id}`
+        : null;
 
     // Legacy `reviews` field, kept for response-shape compatibility but
     // now DERIVED from the history reviews instead of costing its own
@@ -2172,6 +2256,7 @@ app.get("/users/:handle", async (request, reply) => {
       followingCount,
       followedByMe: !!viewerFollow,
       history,
+      historyNextCursor,
       reviews: legacyReviews,
       reviewsNextCursor: null,
     };

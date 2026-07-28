@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { authHeaders } from "../../lib/auth";
@@ -10,6 +10,7 @@ import CommentsSection from "../../components/CommentsSection";
 import ReviewItem, {
   type ReviewItemData,
 } from "../../components/ReviewItem";
+import LoadMore from "../../components/LoadMore";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -29,11 +30,34 @@ type Artist = {
   averageRating: number;
   reviewCount: number;
   reviews: Review[];
+  reviewsNextCursor?: string | null;
+  topNextOffset?: number | null;
 };
 
 type SortMode = "top" | "recent";
 
 const CREAM = "#f4f1ea";
+const PAGE_SIZE = 20;
+
+/**
+ * Per-sort loaded state. Top and Recent are independent streams — and
+ * they paginate differently (Top by offset, Recent by cursor) — so each
+ * keeps its own accumulated reviews and its own position. Switching
+ * tabs restores whatever was already loaded instead of refetching.
+ */
+type SortState = {
+  reviews: Review[];
+  cursor: string | null;
+  offset: number | null;
+  loaded: boolean;
+};
+
+const EMPTY_SORT_STATE: SortState = {
+  reviews: [],
+  cursor: null,
+  offset: null,
+  loaded: false,
+};
 
 export default function ArtistPage() {
   const params = useParams<{ id: string }>();
@@ -45,21 +69,42 @@ export default function ArtistPage() {
   // Top is the default: the artist page is about which performances
   // resonated most across the whole history, not the latest activity.
   const [sort, setSort] = useState<SortMode>("top");
+  const [sortState, setSortState] = useState<Record<SortMode, SortState>>({
+    top: EMPTY_SORT_STATE,
+    recent: EMPTY_SORT_STATE,
+  });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+
+  const current = sortState[sort];
+  // Which sorts have been fetched. Held in a ref, not state, so the load
+  // effect doesn't re-run every time the loaded data itself changes.
+  const loadedSorts = useRef<Record<SortMode, boolean>>({
+    top: false,
+    recent: false,
+  });
 
   useEffect(() => {
     if (!id) return;
+    // Already loaded this sort — restore it rather than refetching.
+    if (loadedSorts.current[sort]) {
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
 
     async function load() {
       setLoading(true);
       setError(null);
+      setMoreError(null);
       try {
         // Sorting is server-side so "Top" ranks the artist's entire
         // review history, not just the most recent page.
-        const res = await fetch(`${API_BASE}/artists/${id}?sort=${sort}`, {
-          headers: authHeaders(),
-        });
+        const res = await fetch(
+          `${API_BASE}/artists/${id}?sort=${sort}&limit=${PAGE_SIZE}`,
+          { headers: authHeaders() },
+        );
         if (!res.ok) {
           if (!cancelled)
             setError(
@@ -70,7 +115,19 @@ export default function ArtistPage() {
           return;
         }
         const data: Artist = await res.json();
-        if (!cancelled) setArtist(data);
+        if (cancelled) return;
+        setArtist(data);
+        const mode = sort;
+        loadedSorts.current[mode] = true;
+        setSortState((prev) => ({
+          ...prev,
+          [mode]: {
+            reviews: data.reviews || [],
+            cursor: data.reviewsNextCursor ?? null,
+            offset: data.topNextOffset ?? null,
+            loaded: true,
+          },
+        }));
       } catch {
         if (!cancelled) setError("Couldn't load this artist. Try refreshing.");
       } finally {
@@ -84,6 +141,48 @@ export default function ArtistPage() {
       cancelled = true;
     };
   }, [id, sort]);
+
+  const hasMore =
+    sort === "top" ? current.offset !== null : current.cursor !== null;
+
+  async function loadMore() {
+    if (!id || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    setMoreError(null);
+    const mode = sort;
+    try {
+      const page =
+        mode === "top"
+          ? `sort=top&limit=${PAGE_SIZE}&offset=${current.offset}`
+          : `sort=recent&limit=${PAGE_SIZE}&cursor=${encodeURIComponent(current.cursor ?? "")}`;
+      const res = await fetch(`${API_BASE}/artists/${id}?${page}`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) {
+        setMoreError("Couldn't load more.");
+        return;
+      }
+      const data: Artist = await res.json();
+      setSortState((prev) => {
+        const existing = prev[mode];
+        const seen = new Set(existing.reviews.map((r) => r.id));
+        const fresh = (data.reviews || []).filter((r) => !seen.has(r.id));
+        return {
+          ...prev,
+          [mode]: {
+            reviews: [...existing.reviews, ...fresh],
+            cursor: data.reviewsNextCursor ?? null,
+            offset: data.topNextOffset ?? null,
+            loaded: true,
+          },
+        };
+      });
+    } catch {
+      setMoreError("Couldn't load more.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <main
@@ -245,7 +344,7 @@ export default function ArtistPage() {
               </div>
             )}
 
-            {artist.reviews.length === 0 && !loading && (
+            {current.reviews.length === 0 && !loading && (
               <div
                 style={{
                   color: "#888",
@@ -258,7 +357,7 @@ export default function ArtistPage() {
               </div>
             )}
 
-            {artist.reviews.length > 0 && (
+            {current.reviews.length > 0 && (
               <div
                 style={{
                   display: "flex",
@@ -269,7 +368,7 @@ export default function ArtistPage() {
                   transition: "opacity 120ms ease",
                 }}
               >
-                {artist.reviews.map((review) => (
+                {current.reviews.map((review) => (
                   <ReviewItem
                     key={review.id}
                     review={review}
@@ -323,6 +422,16 @@ export default function ArtistPage() {
                     }
                   />
                 ))}
+              </div>
+            )}
+
+            {hasMore && (
+              <div style={{ marginTop: "48px" }}>
+                <LoadMore
+                  onClick={loadMore}
+                  loading={loadingMore}
+                  error={moreError}
+                />
               </div>
             )}
           </>

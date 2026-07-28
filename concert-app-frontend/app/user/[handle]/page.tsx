@@ -13,6 +13,7 @@ import ReviewItem, {
   type ReviewItemData,
 } from "../../components/ReviewItem";
 import AttendedItem from "../../components/AttendedItem";
+import LoadMore from "../../components/LoadMore";
 import { formatShowDate } from "../../lib/dateFormat";
 
 const API_BASE =
@@ -55,7 +56,15 @@ type UserDetail = {
   // Unified concert history. Optional so the frontend degrades gracefully
   // in the window where it deploys ahead of the backend.
   history?: HistoryItem[];
+  historyNextCursor?: string | null;
 };
+
+const PAGE_SIZE = 20;
+
+/** Stable identity for a history entry — one row per show. */
+function historyKey(item: HistoryItem): string {
+  return item.show.id;
+}
 
 export default function UserPage() {
   const params = useParams<{ handle: string }>();
@@ -75,6 +84,14 @@ export default function UserPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
 
+  // Pagination over the already-merged chronological history. The client
+  // never paginates reviews and attendance separately — the server hands
+  // back one stream and one composite cursor.
+  const [extraHistory, setExtraHistory] = useState<HistoryItem[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+
   // Silent refetch used by event handlers (after PATCH / DELETE) — does
   // not toggle the loading spinner so the page doesn't flash.
   const refetchSilent = useCallback(async () => {
@@ -93,6 +110,8 @@ export default function UserPage() {
       }
       const data: UserDetail = await res.json();
       setUser(data);
+      setExtraHistory([]);
+      setHistoryCursor(data.historyNextCursor ?? null);
     } catch {
       setError("Couldn't load this profile. Try refreshing.");
     }
@@ -118,7 +137,11 @@ export default function UserPage() {
           return;
         }
         const data: UserDetail = await res.json();
-        if (!cancelled) setUser(data);
+        if (!cancelled) {
+          setUser(data);
+          setExtraHistory([]);
+          setHistoryCursor(data.historyNextCursor ?? null);
+        }
       } catch {
         if (!cancelled)
           setError("Couldn't load this profile. Try refreshing.");
@@ -216,7 +239,38 @@ export default function UserPage() {
     }
   }
 
-  const history = user?.history ?? [];
+  async function loadMoreHistory() {
+    if (!handle || !historyCursor || loadingMore) return;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/users/${handle}?historyLimit=${PAGE_SIZE}&historyCursor=${encodeURIComponent(historyCursor)}`,
+        { headers: authHeaders() },
+      );
+      if (!res.ok) {
+        setMoreError("Couldn't load more.");
+        return;
+      }
+      const data: UserDetail = await res.json();
+      setExtraHistory((prev) => {
+        const seen = new Set(
+          [...(user?.history ?? []), ...prev].map(historyKey),
+        );
+        const fresh = (data.history ?? []).filter(
+          (h) => !seen.has(historyKey(h)),
+        );
+        return [...prev, ...fresh];
+      });
+      setHistoryCursor(data.historyNextCursor ?? null);
+    } catch {
+      setMoreError("Couldn't load more.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  const history = [...(user?.history ?? []), ...extraHistory];
 
   return (
     <main
@@ -643,6 +697,16 @@ export default function UserPage() {
                     />
                   );
                 })}
+              </div>
+            )}
+
+            {historyCursor && (
+              <div style={{ marginTop: "48px" }}>
+                <LoadMore
+                  onClick={loadMoreHistory}
+                  loading={loadingMore}
+                  error={moreError}
+                />
               </div>
             )}
           </>

@@ -7,6 +7,7 @@ import { authHeaders, useAuthUser } from "./lib/auth";
 import ShowSearch from "./components/ShowSearch";
 import Masthead from "./components/Masthead";
 import ReviewCard from "./components/ReviewCard";
+import LoadMore from "./components/LoadMore";
 import { formatShowDate } from "./lib/dateFormat";
 
 type FeedScope = "all" | "following";
@@ -51,12 +52,24 @@ type FeedItem =
       show: FeedShow;
     };
 
+const PAGE_SIZE = 20;
+
+/** Stable identity for a feed item, used to drop duplicates on append. */
+function feedKey(item: FeedItem): string {
+  return item.type === "review"
+    ? `r:${item.reviewId}`
+    : `a:${item.attendanceId}`;
+}
+
 export default function Home() {
   const router = useRouter();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<FeedScope>("all");
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
   const authUser = useAuthUser();
 
   // Read ?scope= from URL on mount so the toggle is bookmarkable
@@ -91,19 +104,24 @@ export default function Home() {
     async function load() {
       setLoading(true);
       setError(null);
+      setMoreError(null);
       try {
-        const url =
-          scope === "following"
-            ? `${API_BASE}/feed?scope=following`
-            : `${API_BASE}/feed`;
-        const res = await fetch(url, { headers: authHeaders() });
+        const scopeParam =
+          scope === "following" ? "scope=following&" : "";
+        const res = await fetch(
+          `${API_BASE}/feed?${scopeParam}limit=${PAGE_SIZE}`,
+          { headers: authHeaders() },
+        );
         if (!res.ok) {
           if (!cancelled)
             setError("Couldn't load the feed. Try refreshing.");
           return;
         }
         const data = await res.json();
-        if (!cancelled) setFeed(data.items || []);
+        if (!cancelled) {
+          setFeed(data.items || []);
+          setNextCursor(data.nextCursor ?? null);
+        }
       } catch {
         if (!cancelled) setError("Couldn't load the feed. Try refreshing.");
       } finally {
@@ -117,6 +135,38 @@ export default function Home() {
       cancelled = true;
     };
   }, [scope]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const scopeParam = scope === "following" ? "scope=following&" : "";
+      const res = await fetch(
+        `${API_BASE}/feed?${scopeParam}limit=${PAGE_SIZE}&cursor=${encodeURIComponent(nextCursor)}`,
+        { headers: authHeaders() },
+      );
+      if (!res.ok) {
+        setMoreError("Couldn't load more.");
+        return;
+      }
+      const data = await res.json();
+      // Append, dropping any item already rendered so a cursor that
+      // straddles equal timestamps can't duplicate a row.
+      setFeed((prev) => {
+        const seen = new Set(prev.map(feedKey));
+        const fresh = (data.items || []).filter(
+          (i: FeedItem) => !seen.has(feedKey(i)),
+        );
+        return [...prev, ...fresh];
+      });
+      setNextCursor(data.nextCursor ?? null);
+    } catch {
+      setMoreError("Couldn't load more.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <main
@@ -288,6 +338,16 @@ export default function Home() {
                 </div>
               ),
             )}
+          </div>
+        )}
+
+        {!loading && !error && nextCursor && (
+          <div style={{ marginTop: "46px" }}>
+            <LoadMore
+              onClick={loadMore}
+              loading={loadingMore}
+              error={moreError}
+            />
           </div>
         )}
       </div>
