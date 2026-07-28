@@ -218,6 +218,12 @@ export default function CommentsSection({
             alignItems: "center",
             gap: "7px",
             lineHeight: 1,
+            // This inline-flex button sits inside a block wrapper that
+            // inherits a 24px line-height, so baseline alignment would
+            // drop it ~3px below the sibling like button (which is a
+            // direct flex child and never enters a line box). Align to
+            // the top of the line box so the two icons line up.
+            verticalAlign: "top",
           }}
         >
           <svg
