@@ -38,7 +38,17 @@ const writeReviewPillStyle: CSSProperties = {
   textDecoration: "none",
 };
 
-export default function Masthead() {
+export default function Masthead({
+  /**
+   * Suppress the Write Review pill. Set by surfaces that already show the
+   * magenta WriteReviewRow, so the same action is not offered twice. Other
+   * pages keep the pill as their only path to the review flow — do not
+   * remove it from here without giving those pages a replacement.
+   */
+  hideWriteReview = false,
+}: {
+  hideWriteReview?: boolean;
+} = {}) {
   const authUser = useAuthUser();
 
   return (
@@ -66,9 +76,11 @@ export default function Masthead() {
 
       {/* Desktop: full link row. */}
       <nav className="masthead-nav-desktop" aria-label="Primary">
-        <Link href="/review/new" style={writeReviewPillStyle}>
-          Write Review
-        </Link>
+        {!hideWriteReview && (
+          <Link href="/review/new" style={writeReviewPillStyle}>
+            Write Review
+          </Link>
+        )}
         {authUser ? (
           <>
             {authUser.isAdmin && (
@@ -107,9 +119,11 @@ export default function Masthead() {
 
       {/* Mobile / narrow tablet: compact row + profile menu. */}
       <div className="masthead-nav-compact" aria-label="Primary">
-        <Link href="/review/new" style={writeReviewPillStyle}>
-          Write Review
-        </Link>
+        {!hideWriteReview && (
+          <Link href="/review/new" style={writeReviewPillStyle}>
+            Write Review
+          </Link>
+        )}
         {authUser ? (
           <>
             <NotificationBell />

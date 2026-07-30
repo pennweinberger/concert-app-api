@@ -8,6 +8,9 @@ import ShowSearch from "./components/ShowSearch";
 import Masthead from "./components/Masthead";
 import ReviewCard from "./components/ReviewCard";
 import LoadMore from "./components/LoadMore";
+import PageGlow from "./components/PageGlow";
+import WriteReviewRow from "./components/WriteReviewRow";
+import SegmentedTabs from "./components/SegmentedTabs";
 import { formatShowDate } from "./lib/dateFormat";
 
 type FeedScope = "all" | "following";
@@ -177,64 +180,56 @@ export default function Home() {
         padding: "24px",
       }}
     >
-      <div style={{ maxWidth: "700px", margin: "0 auto" }}>
-        <Masthead />
+      <PageGlow />
+
+      <div
+        style={{
+          maxWidth: "700px",
+          margin: "0 auto",
+          // Above PageGlow, which is a fixed layer at z-index 0.
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
+        {/* The magenta WriteReviewRow below is this page's Write Review
+            entry point, so the masthead pill is suppressed here. */}
+        <Masthead hideWriteReview />
 
         {/* Full-width search — primary discovery behavior, always visible. */}
         <ShowSearch fullWidth />
 
-        {/* Section heading + monochrome scope tabs. */}
+        <WriteReviewRow />
+
+        {/* Section heading + scope tabs. */}
         <div
           style={{
             display: "flex",
-            alignItems: "baseline",
+            alignItems: "center",
             justifyContent: "space-between",
-            marginTop: "34px",
+            gap: "12px",
+            marginTop: "24px",
             marginBottom: "4px",
           }}
         >
           <h1
             style={{
               margin: 0,
-              fontSize: "18px",
+              fontSize: "20px",
               fontWeight: 600,
               letterSpacing: "-0.01em",
             }}
           >
             Latest Reviews
           </h1>
-          <div
-            style={{ display: "flex", gap: "18px" }}
-            role="tablist"
-            aria-label="Feed scope"
-          >
-            {(["all", "following"] as const).map((mode) => {
-              const active = scope === mode;
-              return (
-                <button
-                  key={mode}
-                  onClick={() => selectScope(mode)}
-                  role="tab"
-                  aria-selected={active}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    borderBottom: active
-                      ? "2px solid #f4f1ea"
-                      : "2px solid transparent",
-                    padding: "4px 0",
-                    cursor: "pointer",
-                    fontSize: "13px",
-                    fontFamily: "inherit",
-                    color: active ? "#f4f1ea" : "#666",
-                    fontWeight: active ? 600 : 400,
-                  }}
-                >
-                  {mode === "all" ? "All" : "Following"}
-                </button>
-              );
-            })}
-          </div>
+          <SegmentedTabs
+            label="Feed scope"
+            value={scope}
+            onChange={selectScope}
+            options={[
+              { value: "all", label: "All" },
+              { value: "following", label: "Following" },
+            ]}
+          />
         </div>
 
         {loading && (
@@ -294,16 +289,19 @@ export default function Home() {
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: "46px",
-              marginTop: "30px",
+              // Cards carry their own border and fill, so they need far
+              // less separation than the borderless items did at 46px.
+              gap: "15px",
+              marginTop: "14px",
             }}
           >
-            {feed.map((item) =>
+            {feed.map((item, i) =>
               item.type === "review" ? (
                 <ReviewCard
                   key={`r:${item.reviewId}`}
                   item={item}
                   viewerHandle={authUser?.handle ?? null}
+                  tintIndex={i}
                 />
               ) : (
                 // Attendance — deliberately quiet: a single muted line,

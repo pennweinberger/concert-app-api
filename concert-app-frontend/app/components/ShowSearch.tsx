@@ -294,13 +294,19 @@ export default function ShowSearch({
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
-        placeholder="Find a show — artist, venue, or city"
+        placeholder={
+          fullWidth
+            ? "Search artists, shows, venues"
+            : "Find a show — artist, venue, or city"
+        }
         autoComplete="off"
         spellCheck={false}
         style={{
           width: "100%",
-          padding: fullWidth ? "13px 14px 13px 42px" : "12px 14px",
-          borderRadius: "12px",
+          padding: fullWidth ? "13px 18px 13px 44px" : "12px 14px",
+          // Pill on the feed (editorial treatment); the compact variant
+          // used elsewhere keeps its original rounded-rect.
+          borderRadius: fullWidth ? "26px" : "12px",
           border: "1px solid #2a2a2a",
           background: "#141414",
           color: "#f4f1ea",

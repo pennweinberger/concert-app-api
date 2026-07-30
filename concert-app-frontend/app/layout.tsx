@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Jost } from "next/font/google";
+import { Inter, Jost, Libre_Caslon_Display } from "next/font/google";
 import "./globals.css";
 import VerifyEmailBanner from "./components/VerifyEmailBanner";
 import PendingDeletionBanner from "./components/PendingDeletionBanner";
@@ -21,6 +21,18 @@ const jost = Jost({
   style: ["normal", "italic"],
 });
 
+// Editorial display serif for artist names in the review feed. Google
+// ships Libre Caslon Display in a single 400 weight only — that is the
+// intended weight for a display cut, so artist names set in it use 400
+// rather than the 700 the sans-serif headline used to carry.
+// Self-hosted by next/font at build time: no request leaves the browser.
+const caslon = Libre_Caslon_Display({
+  variable: "--font-editorial",
+  subsets: ["latin"],
+  weight: "400",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Afterset",
   description: "Review concerts. Discover the best live shows.",
@@ -34,7 +46,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${jost.variable} h-full antialiased`}
+      className={`${inter.variable} ${jost.variable} ${caslon.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <PendingDeletionBanner />
