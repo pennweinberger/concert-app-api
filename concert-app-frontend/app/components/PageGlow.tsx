@@ -3,32 +3,62 @@
 /**
  * Ambient colour wash behind the editorial feed.
  *
- * Column-anchored, not viewport-anchored: the layer is centred and capped
- * at the reading column's width, so the glows keep framing the content at
- * any window size. Anchored to the viewport corners instead, they drift
- * hundreds of pixels away from the 700px column on a wide display and read
- * as unrelated background wash. On a phone the column is ~the whole width,
- * so the two behave identically there.
+ * Column-anchored, not viewport-anchored: each glow is positioned relative
+ * to the centred 700px reading column, so it keeps framing the content at
+ * any window size. Anchored to the viewport corners instead, the glows drift
+ * hundreds of pixels away from the column on a wide display and read as
+ * unrelated background wash. On a phone the column is ~the whole width, so
+ * the two behave identically there.
  *
  * `position: fixed` so it stays put while the feed scrolls — an absolute
  * layer would stretch its gradients over the full document height and go
- * flat on a long page. Gradients are kept inside the layer's own bounds
- * (no negative insets), so this can never introduce horizontal overflow.
+ * flat on a long page. The layer covers the whole viewport and every
+ * gradient fades to transparent within it, so it adds no scrollable area.
  */
 
-// Gradient CENTRES sit at or just outside the layer's edges, so only the
-// soft outer falloff reaches the text. Centring them inside the layer
-// instead puts the bright core directly behind the feed and hazes it —
-// which is exactly what a first pass here did. Because the layer is capped
-// to the column's width, "just outside the layer" is also just outside the
-// reading column on a wide screen, so the framing still lands.
+// Half of the 700px reading column, used to place each glow relative to
+// the column's edge rather than the window's.
+const HALF_COL = 350;
+
+/**
+ * Each glow is centred with `calc(50% ± n)`, so its core sits a fixed
+ * distance outside the centred column at every window width — that is what
+ * "column-anchored" means here. Radii are absolute for the same reason:
+ * percentage radii would resolve against the viewport and so would swell on
+ * a wide monitor.
+ *
+ * Two constraints are in tension and both matter:
+ *  - Cores must stay OUTSIDE the column, or the bright centre lands behind
+ *    the feed and hazes the text.
+ *  - The layer must span the FULL viewport. Capping its width to the column
+ *    (an earlier attempt) put a hard boundary in the middle of the page
+ *    while the gradient was still bright there, so the colour ended in a
+ *    visible vertical seam on a wide screen.
+ */
+function glow(
+  dx: number,
+  y: string,
+  rx: number,
+  ry: number,
+  colour: string,
+): string {
+  const x = dx >= 0 ? `calc(50% + ${dx}px)` : `calc(50% - ${Math.abs(dx)}px)`;
+  return `radial-gradient(${rx}px ${ry}px at ${x} ${y}, ${colour}, transparent 70%)`;
+}
+
+// Offsets stay close to the column edge and radii are generous: pushed
+// further out with tighter radii, the glows stop reading as a halo around
+// the column and become three discrete blobs floating in the empty margins
+// of a wide monitor. Keeping them large, soft and near the column means the
+// visible part is falloff hugging the cards, with the cores still outside
+// the text.
 const GLOWS = [
-  // purple, right of the column
-  "radial-gradient(58% 42% at 108% 40%, rgba(176,44,232,.44), transparent 66%)",
-  // ember, left of the column, lower
-  "radial-gradient(52% 36% at -10% 74%, rgba(240,92,34,.36), transparent 68%)",
+  // purple, upper right of the column
+  glow(HALF_COL + 130, "36%", 660, 570, "rgba(176,44,232,.42)"),
+  // ember, left of the column, lower down
+  glow(-(HALF_COL + 110), "72%", 620, 530, "rgba(240,92,34,.34)"),
   // magenta, bottom right
-  "radial-gradient(44% 26% at 98% 88%, rgba(232,66,148,.30), transparent 70%)",
+  glow(HALF_COL + 90, "90%", 520, 440, "rgba(232,66,148,.26)"),
 ].join(", ");
 
 export default function PageGlow() {
@@ -37,11 +67,7 @@ export default function PageGlow() {
       aria-hidden="true"
       style={{
         position: "fixed",
-        top: 0,
-        left: "50%",
-        transform: "translateX(-50%)",
-        width: "min(100%, 760px)",
-        height: "100vh",
+        inset: 0,
         background: GLOWS,
         pointerEvents: "none",
         zIndex: 0,

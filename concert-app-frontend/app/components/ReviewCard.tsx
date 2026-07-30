@@ -13,6 +13,10 @@ import { formatShowDate } from "../lib/dateFormat";
 // subdued likes/comments. Reviews read as short editorial pieces, not
 // social posts. Reusable so it can later replace the inline review
 // rendering on show / artist / profile pages.
+//
+// Headings stay on Inter: a display serif (Libre Caslon Display) was tried
+// here and reverted — the card's own border and fill already carry the
+// editorial signal, and the serif read as a different product.
 
 export type ReviewCardShow = {
   id: string;
@@ -95,17 +99,14 @@ export default function ReviewCard({
       />
 
       <div style={{ position: "relative", zIndex: 1, pointerEvents: "none" }}>
-        {/* 1 — Artist (headline, editorial serif) */}
+        {/* 1 — Artist (headline) */}
         <h2
           style={{
             margin: 0,
-            fontFamily: "var(--font-editorial), Georgia, serif",
             fontSize: "27px",
-            // Libre Caslon Display ships one weight (400); that is the
-            // display cut's intended weight, so no synthetic bolding.
-            fontWeight: 400,
-            letterSpacing: "-0.005em",
-            lineHeight: 1.14,
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            lineHeight: 1.12,
             color: CREAM,
           }}
         >
