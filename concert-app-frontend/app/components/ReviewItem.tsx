@@ -85,11 +85,14 @@ export default function ReviewItem({
       {hasBody && (
         <p
           style={{
-            margin: "14px 0 0",
-            fontSize: "19px",
-            lineHeight: 1.62,
+            margin: "11px 0 0",
+            // Matches the feed: these entries now sit inside a
+            // ReviewSurface card, which narrows the measure by ~34px and
+            // supplies the emphasis 19px used to carry on bare background.
+            fontSize: "16.5px",
+            lineHeight: 1.58,
             maxWidth: "640px",
-            color: CREAM,
+            color: "#e2ded4",
           }}
         >
           {review.reviewTextRaw}

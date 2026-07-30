@@ -5,6 +5,7 @@ import StarRating from "./StarRating";
 import LikeButton from "./LikeButton";
 import ReportMenu from "./ReportMenu";
 import Avatar from "./Avatar";
+import ReviewSurface from "./ReviewSurface";
 import { isDeletedHandle, DELETED_USER_LABEL } from "../lib/displayUser";
 import { formatShowDate } from "../lib/dateFormat";
 
@@ -43,26 +44,6 @@ const CREAM = "#f4f1ea";
 const MUTED = "#8a8a8a";
 const SUBDUED = "#6a6a6a";
 
-// Warm border/fill tints, rotated by feed position so adjacent cards never
-// share one. Rotating by index (not by a hash of the review id) is what
-// produces the designed rhythm — a hash can hand two neighbours the same
-// tint. Index is stable across appends, so paging never recolours a card
-// that is already on screen.
-const TINTS = [
-  {
-    border: "rgba(228,150,110,0.42)",
-    fill: "linear-gradient(160deg, rgba(70,30,45,0.42), rgba(20,14,24,0.30))",
-  },
-  {
-    border: "rgba(224,110,180,0.40)",
-    fill: "linear-gradient(160deg, rgba(58,26,58,0.42), rgba(18,13,22,0.30))",
-  },
-  {
-    border: "rgba(232,150,90,0.40)",
-    fill: "linear-gradient(160deg, rgba(74,38,32,0.42), rgba(20,14,18,0.30))",
-  },
-] as const;
-
 export default function ReviewCard({
   item,
   viewerHandle,
@@ -76,20 +57,9 @@ export default function ReviewCard({
 }) {
   const deleted = isDeletedHandle(item.userHandle);
   const hasBody = item.reviewTextRaw.trim().length > 0;
-  const tint = TINTS[tintIndex % TINTS.length] ?? TINTS[0];
 
   return (
-    <article
-      id={`review-${item.reviewId}`}
-      style={{
-        position: "relative",
-        scrollMarginTop: "24px",
-        borderRadius: "14px",
-        padding: "17px 17px 15px",
-        border: `1px solid ${tint.border}`,
-        background: tint.fill,
-      }}
-    >
+    <ReviewSurface as="article" id={`review-${item.reviewId}`} tintIndex={tintIndex}>
       {/* Whole-card overlay link to the show — preserves click-anywhere
           navigation. Interactive children re-enable pointer events. */}
       <Link
@@ -272,6 +242,6 @@ export default function ReviewCard({
           )}
         </div>
       </div>
-    </article>
+    </ReviewSurface>
   );
 }

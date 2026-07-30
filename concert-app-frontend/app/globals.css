@@ -50,6 +50,54 @@ body {
   }
 }
 
+/* Peer actions (the show page's Write Review / Attended pair).
+   The two are deliberately equal-weight alternatives, so the accent is
+   spent on INTERACTION and SELECTED state rather than on permanently
+   ranking one above the other. Hover/focus live here because inline
+   styles can't express either.
+
+   Border and fill are driven by custom properties, NOT by plain
+   border/background declarations here. Both peers are styled inline
+   (this codebase is inline-style-first), and an inline declaration beats
+   any stylesheet rule — so a `.peer-action:hover { border-color: … }`
+   rule silently does nothing. Inline styles instead read
+   `var(--peer-*)`, and these rules reassign those variables, which does
+   win because the inline style never declares the variables itself. */
+.peer-action {
+  border: 1px solid var(--peer-border, #333);
+  background-color: var(--peer-bg, transparent);
+  background-image: var(--peer-fill, none);
+  transition:
+    border-color 130ms ease,
+    background-color 130ms ease;
+}
+.peer-action:hover,
+.peer-action:focus-visible {
+  --peer-border: rgba(224, 110, 180, 0.55);
+  --peer-bg: rgba(224, 33, 155, 0.1);
+}
+/* Selected (attended). The accent marks state, not priority — the two
+   actions stay equal-weight. */
+.peer-action.is-selected {
+  --peer-border: rgba(226, 90, 170, 0.6);
+  --peer-fill: linear-gradient(
+    100deg,
+    rgba(120, 40, 90, 0.34),
+    rgba(60, 20, 80, 0.24)
+  );
+}
+/* Deepen rather than replace, so "selected" and "selected + hovered"
+   stay distinguishable. */
+.peer-action.is-selected:hover,
+.peer-action.is-selected:focus-visible {
+  --peer-border: rgba(226, 90, 170, 0.78);
+  --peer-fill: linear-gradient(
+    100deg,
+    rgba(140, 46, 105, 0.42),
+    rgba(72, 24, 96, 0.3)
+  );
+}
+
 /* Profile-menu items: monochrome, subtle hover/focus for keyboard use. */
 .profile-menu-item {
   display: block;

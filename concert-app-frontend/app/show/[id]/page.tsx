@@ -11,6 +11,9 @@ import ReviewItem, {
   type ReviewItemData,
 } from "../../components/ReviewItem";
 import LoadMore from "../../components/LoadMore";
+import PageGlow from "../../components/PageGlow";
+import ReviewSurface from "../../components/ReviewSurface";
+import SegmentedTabs from "../../components/SegmentedTabs";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -163,7 +166,16 @@ export default function ShowPage() {
         padding: "24px",
       }}
     >
-      <div style={{ maxWidth: "700px", margin: "0 auto" }}>
+      <PageGlow />
+
+      <div
+        style={{
+          maxWidth: "700px",
+          margin: "0 auto",
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
         <Masthead />
 
         <div style={{ marginTop: "24px" }}>
@@ -288,13 +300,16 @@ export default function ShowPage() {
             >
               <Link
                 href={`/review/new?showId=${show.id}`}
+                className="peer-action"
                 style={{
                   minWidth: 0,
                   textAlign: "center",
                   fontSize: "13.5px",
                   fontWeight: 500,
                   color: "#f4f1ea",
-                  border: "1px solid #333",
+                  // border + background intentionally omitted: .peer-action
+                  // owns them so hover/focus can take effect. An inline
+                  // declaration here would outrank the stylesheet.
                   borderRadius: "8px",
                   padding: "10px 12px",
                   textDecoration: "none",
@@ -327,38 +342,18 @@ export default function ShowPage() {
                 style={{
                   display: "flex",
                   justifyContent: "flex-end",
-                  gap: "18px",
-                  marginTop: "40px",
+                  marginTop: "36px",
                 }}
-                role="tablist"
-                aria-label="Review sort"
               >
-                {(["recent", "top"] as const).map((mode) => {
-                  const active = sort === mode;
-                  return (
-                    <button
-                      key={mode}
-                      onClick={() => setSort(mode)}
-                      role="tab"
-                      aria-selected={active}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        borderBottom: active
-                          ? "2px solid #f4f1ea"
-                          : "2px solid transparent",
-                        padding: "4px 0",
-                        cursor: "pointer",
-                        fontSize: "13px",
-                        fontFamily: "inherit",
-                        color: active ? "#f4f1ea" : "#666",
-                        fontWeight: active ? 600 : 400,
-                      }}
-                    >
-                      {mode === "recent" ? "Recent" : "Top"}
-                    </button>
-                  );
-                })}
+                <SegmentedTabs
+                  label="Review sort"
+                  value={sort}
+                  onChange={setSort}
+                  options={[
+                    { value: "recent", label: "Recent" },
+                    { value: "top", label: "Top" },
+                  ]}
+                />
               </div>
             )}
 
@@ -381,24 +376,28 @@ export default function ShowPage() {
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: "58px",
-                  marginTop: show.reviews.length > 1 ? "34px" : "44px",
+                  gap: "15px",
+                  marginTop: show.reviews.length > 1 ? "16px" : "26px",
                 }}
               >
+                {/* No tintIndex: every review here is the SAME night, so a
+                    uniform tint is correct — rotation would imply the
+                    variety the artist page and feed actually have. */}
                 {sortedReviews.map((review) => (
-                  <ReviewItem
-                    key={review.id}
-                    review={review}
-                    actions={
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <CommentsSection
-                          reviewId={review.id}
-                          initialCount={review.commentCount}
-                          variant="editorial"
-                        />
-                      </div>
-                    }
-                  />
+                  <ReviewSurface key={review.id}>
+                    <ReviewItem
+                      review={review}
+                      actions={
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <CommentsSection
+                            reviewId={review.id}
+                            initialCount={review.commentCount}
+                            variant="editorial"
+                          />
+                        </div>
+                      }
+                    />
+                  </ReviewSurface>
                 ))}
               </div>
             )}

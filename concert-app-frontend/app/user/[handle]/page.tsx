@@ -14,6 +14,8 @@ import ReviewItem, {
 } from "../../components/ReviewItem";
 import AttendedItem from "../../components/AttendedItem";
 import LoadMore from "../../components/LoadMore";
+import PageGlow from "../../components/PageGlow";
+import ReviewSurface from "../../components/ReviewSurface";
 import { formatShowDate } from "../../lib/dateFormat";
 
 const API_BASE =
@@ -281,7 +283,16 @@ export default function UserPage() {
         padding: "24px",
       }}
     >
-      <div style={{ maxWidth: "700px", margin: "0 auto" }}>
+      <PageGlow />
+
+      <div
+        style={{
+          maxWidth: "700px",
+          margin: "0 auto",
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
         <Masthead />
 
         <div style={{ marginTop: "24px" }}>
@@ -462,11 +473,11 @@ export default function UserPage() {
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: "54px",
-                  marginTop: "34px",
+                  gap: "15px",
+                  marginTop: "20px",
                 }}
               >
-                {history.map((item) => {
+                {history.map((item, i) => {
                   const artistHeading = (
                     <h2
                       style={{
@@ -486,13 +497,18 @@ export default function UserPage() {
                     </h2>
                   );
 
+                  // Attended-but-not-reviewed stays QUIET: outline only, no
+                  // fill. A profile is mostly attendance, so giving these
+                  // the filled card would flatten the deliberate hierarchy
+                  // of reviews loud / bare attendance secondary.
                   if (item.kind === "attended" || !item.review) {
                     return (
-                      <AttendedItem
-                        key={`a:${item.show.id}`}
-                        show={item.show}
-                        isOwner={isOwnProfile}
-                      />
+                      <ReviewSurface key={`a:${item.show.id}`} variant="quiet">
+                        <AttendedItem
+                          show={item.show}
+                          isOwner={isOwnProfile}
+                        />
+                      </ReviewSurface>
                     );
                   }
 
@@ -503,7 +519,7 @@ export default function UserPage() {
                   // stray click can't navigate away mid-edit.
                   if (isEditing) {
                     return (
-                      <div key={`r:${review.id}`}>
+                      <ReviewSurface key={`r:${review.id}`} tintIndex={i}>
                         {artistHeading}
                         <div style={{ marginTop: "12px" }}>
                           <div style={{ display: "flex", gap: "6px" }}>
@@ -598,7 +614,7 @@ export default function UserPage() {
                             </button>
                           </div>
                         </div>
-                      </div>
+                      </ReviewSurface>
                     );
                   }
 
@@ -615,8 +631,8 @@ export default function UserPage() {
                   };
 
                   return (
+                    <ReviewSurface key={`r:${review.id}`} tintIndex={i}>
                     <ReviewItem
-                      key={`r:${review.id}`}
                       review={reviewData}
                       heading={artistHeading}
                       // The header already establishes whose reviews these are.
@@ -695,6 +711,7 @@ export default function UserPage() {
                         </>
                       }
                     />
+                    </ReviewSurface>
                   );
                 })}
               </div>

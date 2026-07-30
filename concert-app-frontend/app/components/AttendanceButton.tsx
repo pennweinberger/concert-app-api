@@ -25,9 +25,12 @@ type Props = {
  * optimistic toggle with rollback, single-flight, signed-out clicks
  * redirect to /signin preserving the current URL.
  *
- * Two visual states (cream foundation, no other accent):
+ * Two visual states. This is the show page's peer of "Write Review" — they
+ * are equal-weight alternatives, so the accent marks SELECTED state here
+ * rather than ranking one action above the other:
  *   Not attended -> cream outline on transparent ("Mark as Attended")
- *   Attended     -> cream fill on off-black text ("Attended")
+ *   Attended     -> accent border + sunset tint, cream text, check icon
+ * Hover/focus accent for both comes from `.peer-action` in globals.css.
  */
 export default function AttendanceButton({
   showId,
@@ -126,14 +129,19 @@ export default function AttendanceButton({
             ? "Review implies attendance. Delete the review to unattend."
             : undefined
         }
+        className={`peer-action${attended ? " is-selected" : ""}`}
         style={{
-          display: "block",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "7px",
           width: "100%",
           padding: "10px 12px",
           borderRadius: "8px",
-          border: attended ? "1px solid transparent" : "1px solid #333",
-          background: attended ? "#f4f1ea" : "transparent",
-          color: attended ? "#0a0a0a" : "#f4f1ea",
+          // border + background live in .peer-action / .is-selected so the
+          // selected and hover states can actually apply; an inline
+          // declaration would outrank them.
+          color: "#f4f1ea",
           cursor:
             blockedByReview && attended ? "not-allowed" : "pointer",
           fontSize: "13.5px",
@@ -143,6 +151,22 @@ export default function AttendanceButton({
           boxSizing: "border-box",
         }}
       >
+        {attended && (
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={{ display: "block", flex: "0 0 auto" }}
+          >
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        )}
         {attended ? "Attended" : "Mark as Attended"}
       </button>
       {errorFlash && (

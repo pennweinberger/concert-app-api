@@ -11,6 +11,9 @@ import ReviewItem, {
   type ReviewItemData,
 } from "../../components/ReviewItem";
 import LoadMore from "../../components/LoadMore";
+import PageGlow from "../../components/PageGlow";
+import ReviewSurface from "../../components/ReviewSurface";
+import SegmentedTabs from "../../components/SegmentedTabs";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -193,7 +196,16 @@ export default function ArtistPage() {
         padding: "24px",
       }}
     >
-      <div style={{ maxWidth: "700px", margin: "0 auto" }}>
+      <PageGlow />
+
+      <div
+        style={{
+          maxWidth: "700px",
+          margin: "0 auto",
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
         <Masthead />
 
         <div style={{ marginTop: "24px" }}>
@@ -295,8 +307,12 @@ export default function ArtistPage() {
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  alignItems: "baseline",
-                  marginTop: "38px",
+                  // center, not baseline: the sort control is now a pill,
+                  // and baseline-aligning a pill against a heading sits it
+                  // low.
+                  alignItems: "center",
+                  gap: "12px",
+                  marginTop: "36px",
                 }}
               >
                 <h2
@@ -309,38 +325,15 @@ export default function ArtistPage() {
                 >
                   Reviews
                 </h2>
-                <div
-                  style={{ display: "flex", gap: "16px" }}
-                  role="tablist"
-                  aria-label="Review sort"
-                >
-                  {(["top", "recent"] as const).map((mode) => {
-                    const active = sort === mode;
-                    return (
-                      <button
-                        key={mode}
-                        onClick={() => setSort(mode)}
-                        role="tab"
-                        aria-selected={active}
-                        style={{
-                          background: "transparent",
-                          border: "none",
-                          borderBottom: active
-                            ? "2px solid #f4f1ea"
-                            : "2px solid transparent",
-                          padding: "4px 0",
-                          cursor: "pointer",
-                          fontSize: "13px",
-                          fontFamily: "inherit",
-                          color: active ? CREAM : "#666",
-                          fontWeight: active ? 600 : 400,
-                        }}
-                      >
-                        {mode === "top" ? "Top" : "Recent"}
-                      </button>
-                    );
-                  })}
-                </div>
+                <SegmentedTabs
+                  label="Review sort"
+                  value={sort}
+                  onChange={setSort}
+                  options={[
+                    { value: "top", label: "Top" },
+                    { value: "recent", label: "Recent" },
+                  ]}
+                />
               </div>
             )}
 
@@ -362,15 +355,17 @@ export default function ArtistPage() {
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: "58px",
-                  marginTop: "34px",
+                  gap: "15px",
+                  marginTop: "16px",
                   opacity: loading ? 0.5 : 1,
                   transition: "opacity 120ms ease",
                 }}
               >
-                {current.reviews.map((review) => (
+                {/* Rotating tints: each card is a DIFFERENT performance, so
+                    the variety the rotation implies is real. */}
+                {current.reviews.map((review, i) => (
+                  <ReviewSurface key={review.id} tintIndex={i}>
                   <ReviewItem
-                    key={review.id}
                     review={review}
                     context={
                       // Performance context — the venue/date IS the story
@@ -421,6 +416,7 @@ export default function ArtistPage() {
                       </div>
                     }
                   />
+                  </ReviewSurface>
                 ))}
               </div>
             )}
