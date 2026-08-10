@@ -1120,7 +1120,6 @@ app.get(
   async (request, reply) => {
     const query = request.query as {
       q?: string;
-      cursor?: string;
       limit?: string;
     };
     const q = typeof query.q === "string" ? query.q : "";
@@ -1129,9 +1128,13 @@ app.get(
       Number.isFinite(rawLimit) && rawLimit > 0
         ? Math.min(rawLimit, MAX_SHOW_SEARCH_LIMIT)
         : DEFAULT_SHOW_SEARCH_LIMIT;
-    const cursor = parseCursor(query.cursor);
 
-    const result = await searchShows({ q, limit, cursor }, { prisma });
+    // No cursor: results are ordered by distance from today in both
+    // directions, which a localDate cursor cannot express. This is a
+    // type-ahead capped at MAX_SHOW_SEARCH_LIMIT and no caller ever
+    // paginated it, so the field is gone rather than left meaning
+    // something subtly different.
+    const result = await searchShows({ q, limit }, { prisma });
     return reply.send({
       items: result.items.map((s) => ({
         id: s.id,
@@ -1141,7 +1144,6 @@ app.get(
         reviewCount: s.reviewCount,
         attendanceCount: s.attendanceCount,
       })),
-      nextCursor: result.nextCursor,
     });
   },
 );
