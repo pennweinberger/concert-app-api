@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getToken, useAuthUser } from "../../lib/auth";
+import { authHeaders, getToken, useAuthUser } from "../../lib/auth";
 import VerifyToPublishModal from "../../components/VerifyToPublishModal";
 
 const API_BASE =
@@ -42,6 +42,19 @@ export default function NewReviewPage() {
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [results, setResults] = useState<ShowSearchResult[]>([]);
+
+  // Manual entry. Ingestion covers a fixed venue allowlist, and
+  // Ticketmaster returns nothing for events that have already happened —
+  // so for a gig at an un-ingested venue this is the ONLY way in. Without
+  // it the search step is a dead end for exactly the shows people most
+  // want to review: the ones they just went to.
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualArtist, setManualArtist] = useState("");
+  const [manualVenue, setManualVenue] = useState("");
+  const [manualCity, setManualCity] = useState("");
+  const [manualDate, setManualDate] = useState("");
+  const [manualError, setManualError] = useState<string | null>(null);
+  const [manualSubmitting, setManualSubmitting] = useState(false);
 
   // Compose step
   const [selectedShow, setSelectedShow] = useState<ShowSearchResult | null>(
@@ -151,6 +164,63 @@ export default function NewReviewPage() {
       setError("Search failed. Try again.");
     } finally {
       setSearching(false);
+    }
+  }
+
+  /** Today in the user's own timezone — the max reviewable date. */
+  function todayLocalISO(): string {
+    const d = new Date();
+    const off = d.getTimezoneOffset() * 60_000;
+    return new Date(d.getTime() - off).toISOString().slice(0, 10);
+  }
+
+  async function submitManualShow() {
+    const artist = manualArtist.trim();
+    const venue = manualVenue.trim();
+    const city = manualCity.trim();
+    const localDate = manualDate.trim();
+
+    if (!artist || !venue || !city || !localDate) {
+      setManualError("Artist, venue, city and date are all required.");
+      return;
+    }
+    // A review implies you were there, so a future date is never valid.
+    if (localDate > todayLocalISO()) {
+      setManualError("That date is in the future — you can only review a show you've been to.");
+      return;
+    }
+
+    setManualSubmitting(true);
+    setManualError(null);
+    try {
+      // /shows/confirm resolves Artist by unique name and Venue by unique
+      // (name, city), so typing a venue we already know attaches to the
+      // existing row instead of creating a duplicate.
+      const res = await fetch(`${API_BASE}/shows/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ artist, venue, city, localDate }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.showId) {
+        setManualError(data?.error || "Couldn't add that show. Try again.");
+        return;
+      }
+      // Straight into the compose step, same as picking a search result.
+      setPreloadedShowId(data.showId);
+      setSelectedShow({
+        provider: "internal",
+        providerEventId: data.showId,
+        artist,
+        venue,
+        city,
+        localDate,
+        ticketUrl: "",
+      });
+    } catch {
+      setManualError("Network error. Try again.");
+    } finally {
+      setManualSubmitting(false);
     }
   }
 
@@ -441,6 +511,191 @@ export default function NewReviewPage() {
                 </div>
               </button>
             ))}
+
+            {/* Manual entry. Offered once a search has run — including when
+                it DID return results, since the right show may simply not
+                be among them (a venue outside the ingest allowlist, or a
+                past date Ticketmaster no longer returns). */}
+            {searched && !searching && !manualOpen && (
+              <button
+                onClick={() => {
+                  setManualOpen(true);
+                  setManualArtist(query.trim());
+                  setManualError(null);
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: "4px 0",
+                  marginTop: results.length ? "6px" : "14px",
+                  color: "#8a8a8a",
+                  fontSize: "13.5px",
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "3px",
+                }}
+              >
+                Can&rsquo;t find it? Add the show yourself
+              </button>
+            )}
+
+            {manualOpen && (
+              <div
+                style={{
+                  marginTop: "16px",
+                  padding: "16px",
+                  borderRadius: "14px",
+                  border: "1px solid rgba(226,140,60,0.45)",
+                  background:
+                    "linear-gradient(100deg, rgba(120,40,90,0.22), rgba(60,20,80,0.16))",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 600,
+                    marginBottom: "4px",
+                  }}
+                >
+                  Add the show
+                </div>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: "#a9a295",
+                    marginBottom: "14px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  We don&rsquo;t list every venue yet. Add the details and
+                  we&rsquo;ll create it — if we already know the artist or
+                  venue, yours joins the existing page.
+                </div>
+
+                {(
+                  [
+                    ["Artist", manualArtist, setManualArtist, "Hilary Duff"],
+                    ["Venue", manualVenue, setManualVenue, "Madison Square Garden"],
+                    ["City", manualCity, setManualCity, "New York"],
+                  ] as const
+                ).map(([label, value, setter, placeholder]) => (
+                  <label key={label} style={{ display: "block", marginBottom: "10px" }}>
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: "12.5px",
+                        color: "#8a8a8a",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {label}
+                    </span>
+                    <input
+                      value={value}
+                      onChange={(e) => setter(e.target.value)}
+                      placeholder={placeholder}
+                      maxLength={label === "City" ? 120 : 200}
+                      style={{
+                        width: "100%",
+                        padding: "11px 12px",
+                        borderRadius: "10px",
+                        border: "1px solid #333",
+                        background: "#141414",
+                        color: "#f4f1ea",
+                        fontSize: "14.5px",
+                        fontFamily: "inherit",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </label>
+                ))}
+
+                <label style={{ display: "block", marginBottom: "14px" }}>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: "12.5px",
+                      color: "#8a8a8a",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Date
+                  </span>
+                  <input
+                    type="date"
+                    value={manualDate}
+                    onChange={(e) => setManualDate(e.target.value)}
+                    // A review implies attendance, so future dates are
+                    // never valid here. Enforced again on submit, since
+                    // the max attribute alone is trivially bypassed.
+                    max={todayLocalISO()}
+                    style={{
+                      width: "100%",
+                      padding: "11px 12px",
+                      borderRadius: "10px",
+                      border: "1px solid #333",
+                      background: "#141414",
+                      color: "#f4f1ea",
+                      fontSize: "14.5px",
+                      fontFamily: "inherit",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </label>
+
+                {manualError && (
+                  <div
+                    style={{
+                      color: "#ff8080",
+                      fontSize: "13px",
+                      marginBottom: "10px",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {manualError}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    onClick={submitManualShow}
+                    disabled={manualSubmitting}
+                    style={{
+                      padding: "10px 16px",
+                      borderRadius: "10px",
+                      border: "none",
+                      background: manualSubmitting ? "#555" : "#e0219b",
+                      color: manualSubmitting ? "#aaa" : "#fff",
+                      fontSize: "13.5px",
+                      fontWeight: 600,
+                      fontFamily: "inherit",
+                      cursor: manualSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {manualSubmitting ? "Adding…" : "Add and review"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setManualOpen(false);
+                      setManualError(null);
+                    }}
+                    style={{
+                      padding: "10px 16px",
+                      borderRadius: "10px",
+                      border: "1px solid #333",
+                      background: "none",
+                      color: "#aaa",
+                      fontSize: "13.5px",
+                      fontFamily: "inherit",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
 

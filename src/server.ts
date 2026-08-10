@@ -168,6 +168,10 @@ const rateLimitForgotPassword = makeRateLimit("forgot-password", 3, 60 * 60_000)
 const rateLimitResetPassword = makeRateLimit("reset-password", 10, 60_000); // 10 / min / IP
 const rateLimitRequestDelete = makeRateLimit("request-delete", 3, 60 * 60_000); // 3 / hour / IP
 const rateLimitConfirmDelete = makeRateLimit("confirm-delete", 10, 60_000); // 10 / min / IP
+// /shows/confirm creates Artist / Venue / Show rows from caller-supplied
+// text. Generous enough for a real person adding a few shows they
+// attended, tight enough that it isn't a bulk row-creation vector.
+const rateLimitConfirmShow = makeRateLimit("confirm-show", 20, 60 * 60_000); // 20 / hour / IP
 const rateLimitCreateComment = makeRateLimit("create-comment", 20, 60_000); // 20 / min / IP
 
 // Catch unhandled errors and forward to Sentry (no-op if Sentry not
@@ -1018,17 +1022,36 @@ app.get(
   }
 });
 
-app.post("/shows/confirm", async (request, reply) => {
+// Promotes a show into our canonical tables — either from a Ticketmaster
+// search result or from a user typing in a show we never ingested (the
+// only route to reviewing a gig at a venue outside the ingest allowlist,
+// since Ticketmaster drops events once they've happened).
+//
+// Requires an active account. It writes Artist / Venue / Show rows from
+// caller-supplied text, so leaving it open would be a free row-creation
+// endpoint. Both callers already gate on sign-in client-side; this makes
+// it true server-side as well.
+app.post(
+  "/shows/confirm",
+  { preHandler: rateLimitConfirmShow },
+  async (request, reply) => {
+  const userId = await requireActiveUserId(request, reply);
+  if (!userId) return;
+
   const body = request.body as {
-    artist: string;
-    venue: string;
-    city: string;
-    localDate: string;
+    artist?: unknown;
+    venue?: unknown;
+    city?: unknown;
+    localDate?: unknown;
     artistTicketmasterId?: string | null;
     venueTicketmasterId?: string | null;
   };
 
-  const { artist, venue, city, localDate } = body;
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const artist = str(body.artist);
+  const venue = str(body.venue);
+  const city = str(body.city);
+  const localDate = str(body.localDate);
 
   if (!artist || !venue || !city || !localDate) {
     return reply.status(400).send({
@@ -1036,8 +1059,22 @@ app.post("/shows/confirm", async (request, reply) => {
     });
   }
 
+  // Free-text fields land in unique indexes and render as headlines, so
+  // bound them rather than trusting the client.
+  if (artist.length > 200 || venue.length > 200 || city.length > 120) {
+    return reply.status(400).send({ error: "Field too long" });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
+    return reply
+      .status(400)
+      .send({ error: "localDate must be YYYY-MM-DD" });
+  }
+
   try {
     const parsedDate = new Date(`${localDate}T00:00:00.000Z`);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return reply.status(400).send({ error: "localDate is not a real date" });
+    }
 
     // Resolve Artist + Venue via the showResolution lib. When the
     // caller passes a Ticketmaster id, those are the primary lookup
@@ -1108,7 +1145,8 @@ app.post("/shows/confirm", async (request, reply) => {
       details: err?.message || String(err),
     });
   }
-});
+},
+);
 
 // Search our canonical Shows table. Browse-only — no external API call.
 // The frontend pairs this with /shows/search (Ticketmaster) and merges
