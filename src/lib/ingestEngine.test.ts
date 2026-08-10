@@ -229,3 +229,34 @@ describe("ingestEngine — resilience", () => {
     expect(r.created).toBe(1);
   });
 });
+
+describe("ingestEngine — wall-clock deadline", () => {
+  it("stops starting work once the deadline passes", async () => {
+    const s = makeMockPrisma();
+    let t = 1_000_000;
+    // Each call to now() advances 1s, mimicking slow cross-region writes.
+    const now = () => new Date((t += 1000));
+    const r = await ingestNormalizedEvents(
+      [
+        evt({ providerEventId: "a" }),
+        evt({ providerEventId: "b" }),
+        evt({ providerEventId: "c" }),
+      ],
+      { prisma: s.prisma, now, deadline: new Date(1_000_000 + 2500) },
+    );
+    // Some work happened, then the run ended cleanly rather than being killed.
+    expect(r.budgetExhausted).toBe(true);
+    expect(r.created).toBeLessThan(3);
+    expect(r.skipped.writeBudgetReached).toBeGreaterThan(0);
+  });
+
+  it("runs everything when no deadline is given", async () => {
+    const s = makeMockPrisma();
+    const r = await ingestNormalizedEvents(
+      [evt({ providerEventId: "a" }), evt({ providerEventId: "b" })],
+      { prisma: s.prisma },
+    );
+    expect(r.created).toBe(2);
+    expect(r.budgetExhausted).toBeUndefined();
+  });
+});

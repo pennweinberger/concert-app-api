@@ -42,8 +42,19 @@ export type TicketmasterIngestDeps = {
   /** Run every slice — used for the initial backfill. */
   allSlices?: boolean;
   maxWrites?: number;
+  /**
+   * Seconds of wall clock this run may use. The primary guard against
+   * Vercel's function timeout — see the deadline note in ingestEngine.
+   * A run that hits it returns a normal summary with budgetExhausted set,
+   * instead of being killed mid-flight and leaving the IngestRun row
+   * stuck at status="running".
+   */
+  budgetSeconds?: number;
   dmaId?: string;
 };
+
+/** Comfortably inside the observed function ceiling (DICE runs reach 155s). */
+const DEFAULT_BUDGET_SECONDS = 120;
 
 export type TicketmasterRunSummary = IngestSummary & {
   slices: {
@@ -94,11 +105,19 @@ export async function runTicketmasterIngestion(
     apiRequests: 0,
   };
 
-  // Write budget is shared across slices so one run can't blow past the
+  // Both budgets are shared across slices so one run can't blow past the
   // function timeout by doing 6 full slices of writes.
   let remainingWrites = deps.maxWrites ?? 600;
+  const deadline = new Date(
+    base.getTime() + (deps.budgetSeconds ?? DEFAULT_BUDGET_SECONDS) * 1000,
+  );
 
   for (const index of indices) {
+    // Don't even fetch another slice if there is no time to write it.
+    if (now().getTime() >= deadline.getTime()) {
+      summary.budgetExhausted = true;
+      break;
+    }
     const { start, end } = sliceWindow(base, index);
     const page = await fetchEventWindow(
       { dmaId, startDateTime: iso(start), endDateTime: iso(end) },
@@ -111,6 +130,7 @@ export async function runTicketmasterIngestion(
       prisma: deps.prisma,
       now,
       maxWrites: remainingWrites,
+      deadline,
     });
 
     summary.slices.push({

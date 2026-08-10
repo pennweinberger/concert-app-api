@@ -39,13 +39,20 @@ export type IngestEngineDeps = {
   prisma: PrismaClient;
   now?: () => Date;
   /**
-   * Cap on Shows created/updated in one run. Vercel functions die at
-   * 300s, and the first backfill has ~1,800 events to write. Hitting the
-   * cap ends the run cleanly and the next one resumes — every event
-   * already written is skipped by the batched ref lookup, so progress is
-   * never redone.
+   * Cap on Shows created/updated in one run. Hitting it ends the run
+   * cleanly and the next one resumes — everything already written is
+   * skipped by the batched ref lookup, so progress is never redone.
    */
   maxWrites?: number;
+  /**
+   * Wall-clock deadline. The REAL guard, because a write-count cap
+   * cannot protect a time limit when per-write latency varies: Vercel
+   * runs in iad1 while Supabase is us-west-2, so a write costs ~1s
+   * cross-region but ~10ms locally. A count tuned for one is wrong for
+   * the other, and being wrong means a 504 with the IngestRun row stuck
+   * at "running". Stop starting new work past this instant.
+   */
+  deadline?: Date;
 };
 
 /** Above this, two artist/venue names are near-identical enough to be worth a human look. */
@@ -136,6 +143,8 @@ export async function ingestNormalizedEvents(
 
   const touchedRefIds: string[] = [];
   let writes = 0;
+  const outOfTime = () =>
+    deps.deadline !== undefined && now().getTime() >= deps.deadline.getTime();
 
   for (const e of valid) {
     try {
@@ -154,7 +163,7 @@ export async function ingestNormalizedEvents(
           summary.skipped.unchanged++;
           continue;
         }
-        if (writes >= maxWrites) {
+        if (writes >= maxWrites || outOfTime()) {
           summary.skipped.writeBudgetReached++;
           summary.budgetExhausted = true;
           continue;
@@ -174,7 +183,7 @@ export async function ingestNormalizedEvents(
       }
 
       // ---- 3b. Not linked yet: resolve entities, then find-or-create -------
-      if (writes >= maxWrites) {
+      if (writes >= maxWrites || outOfTime()) {
         summary.skipped.writeBudgetReached++;
         summary.budgetExhausted = true;
         continue;

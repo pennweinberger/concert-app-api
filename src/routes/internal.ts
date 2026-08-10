@@ -246,8 +246,14 @@ export function registerInternalRoutes(
       allSlices?: string;
       slices?: string;
       maxWrites?: string;
+      budgetSeconds?: string;
     };
     const allSlices = q.allSlices === "true";
+    const rawBudget = Number(q.budgetSeconds);
+    const budgetSeconds =
+      Number.isFinite(rawBudget) && rawBudget > 0
+        ? Math.floor(rawBudget)
+        : undefined;
     const slices = q.slices
       ? q.slices
           .split(",")
@@ -272,6 +278,7 @@ export function registerInternalRoutes(
             allSlices,
             ...(slices && slices.length > 0 ? { slices } : {}),
             ...(maxWrites !== undefined ? { maxWrites } : {}),
+            ...(budgetSeconds !== undefined ? { budgetSeconds } : {}),
           }),
       );
       return reply.status(200).send(summary);
