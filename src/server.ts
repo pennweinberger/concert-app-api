@@ -995,10 +995,16 @@ app.get(
     // debounced type-ahead. Because results are date-ordered, whatever
     // falls past the cut is the furthest-future, i.e. the least likely
     // to be reviewed.
+    // classificationName=music drops non-concert listings. Ticketmaster
+    // sells venue tours and attractions alongside gigs, and they flooded
+    // the results: 29 of 50 rows for "madison square garden" were
+    // "Madison Square Garden Tour Experience". This is a concert-review
+    // app, so those are pure noise. It also filters out comedy, theatre
+    // and sports — out of scope here by the same logic.
     const res = await fetch(
       `https://app.ticketmaster.com/discovery/v2/events.json?keyword=${encodeURIComponent(
         q
-      )}&size=50&sort=date,asc&apikey=${process.env.TICKETMASTER_API_KEY}`
+      )}&size=50&sort=date,asc&classificationName=music&apikey=${process.env.TICKETMASTER_API_KEY}`
     );
 
     const data = await res.json();
