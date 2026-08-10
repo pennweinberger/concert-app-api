@@ -978,10 +978,27 @@ app.get(
   }
 
   try {
+    // `sort` matters more than `size`, and it is free.
+    //
+    // Ticketmaster defaults to relevance ordering with a 20-item page.
+    // Relevance ordering was actively wrong for us: "madison square
+    // garden" returned 20 of 181 events ALL dated about five months out,
+    // so that venue's shows for the current week were invisible —
+    // exactly the "only shows future concerts" complaint. Sorting by
+    // date ascending returns the soonest shows instead, reordering the
+    // same page at no extra cost. Measured: "brooklyn" went from 4 NYC
+    // results scattered across months to 14 starting yesterday.
+    //
+    // The larger page then fixes genuine truncation — "hilary duff" has
+    // 30 events and we were silently taking 20. 50 holds the response
+    // near 500KB; 100 nearly doubles it, which is not worth it for a
+    // debounced type-ahead. Because results are date-ordered, whatever
+    // falls past the cut is the furthest-future, i.e. the least likely
+    // to be reviewed.
     const res = await fetch(
       `https://app.ticketmaster.com/discovery/v2/events.json?keyword=${encodeURIComponent(
         q
-      )}&apikey=${process.env.TICKETMASTER_API_KEY}`
+      )}&size=50&sort=date,asc&apikey=${process.env.TICKETMASTER_API_KEY}`
     );
 
     const data = await res.json();

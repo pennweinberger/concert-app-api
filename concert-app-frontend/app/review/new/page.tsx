@@ -9,6 +9,9 @@ import VerifyToPublishModal from "../../components/VerifyToPublishModal";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
 
+/** Most rows to render in the search step. See the note at the list. */
+const MAX_RESULTS = 20;
+
 type ShowSearchResult = {
   provider: string;
   providerEventId: string;
@@ -483,7 +486,14 @@ export default function NewReviewPage() {
               </div>
             )}
 
-            {results.map((show) => (
+            {/* Bounded list. The backend now asks Ticketmaster for up to
+                50 date-ordered events (it used to take a relevance-ordered
+                20), which is right for coverage but far too many rows to
+                render. DB rows come first and Ticketmaster rows are
+                soonest-first, so the cut only ever drops far-future
+                shows — and manual entry sits directly below for anything
+                that isn't here. */}
+            {results.slice(0, MAX_RESULTS).map((show) => (
               <button
                 key={show.providerEventId}
                 onClick={() => selectShow(show)}
