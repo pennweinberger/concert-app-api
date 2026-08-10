@@ -149,6 +149,42 @@ describe("ingestEngine — status changes", () => {
     );
   });
 
+  /**
+   * Regression: providers list one show under several event ids whose
+   * start times disagree. Accepting every difference made each listing
+   * overwrite the other, so every run reported updates forever.
+   */
+  it("ignores a bare time difference — that is not a reschedule", async () => {
+    const s = makeMockPrisma({
+      existingRefs: [{
+        id: "ref_1", providerEventId: "tm_1", showId: "show_1",
+        show: { id: "show_1", status: "scheduled", startDatetimeUtc: new Date("2026-09-03T00:00:00.000Z") },
+      }],
+    });
+    const r = await ingestNormalizedEvents(
+      [evt({ status: "scheduled", startDatetimeUtc: new Date("2026-09-03T03:00:00.000Z") })],
+      { prisma: s.prisma },
+    );
+    expect(r.updated).toBe(0);
+    expect(r.skipped.unchanged).toBe(1);
+    expect(s.mocks.showUpdate).not.toHaveBeenCalled();
+  });
+
+  it("fills in a time when the show was created without one", async () => {
+    const s = makeMockPrisma({
+      existingRefs: [{
+        id: "ref_1", providerEventId: "tm_1", showId: "show_1",
+        // startDatetimeUtc == localDate means we never had a clock time
+        show: { id: "show_1", status: "scheduled", startDatetimeUtc: DATE },
+      }],
+    });
+    const r = await ingestNormalizedEvents(
+      [evt({ startDatetimeUtc: new Date("2026-09-02T23:00:00.000Z") })],
+      { prisma: s.prisma },
+    );
+    expect(r.updated).toBe(1);
+  });
+
   it("applies a rescheduled start time", async () => {
     const s = makeMockPrisma({
       existingRefs: [{

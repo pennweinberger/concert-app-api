@@ -154,10 +154,33 @@ export async function ingestNormalizedEvents(
       if (existing) {
         touchedRefIds.push(existing.id);
         const statusChanged = existing.show.status !== e.status;
+
+        // A DIFFERENT TIME IS NOT A RESCHEDULE.
+        //
+        // Providers list one real show under several event ids — resale,
+        // platinum, presale — and those listings disagree with each other
+        // about the start time. Measured on live Ticketmaster data: 81
+        // shows carried more than one event id, and 3 of 6 sampled had
+        // conflicting times among their own listings (e.g. 00:00 vs 03:00).
+        //
+        // Letting each listing write its own time makes them fight: every
+        // run "updates" the same rows, forever, and ingestion is never
+        // idempotent. It showed up as a stubborn updated=35 on every pass
+        // after creates had gone to zero.
+        //
+        // So a new time is accepted only when the provider EXPLICITLY says
+        // the schedule moved, or when we are filling in a time we never
+        // had (the show was created from a date with no clock time, and
+        // startDatetimeUtc is still the localDate placeholder).
+        const hasRealTime =
+          existing.show.startDatetimeUtc.getTime() !== e.localDate.getTime();
+        const providerSignalledMove =
+          e.status === "rescheduled" || e.status === "postponed";
         const timeChanged =
           e.startDatetimeUtc !== null &&
           existing.show.startDatetimeUtc.getTime() !==
-            e.startDatetimeUtc.getTime();
+            e.startDatetimeUtc.getTime() &&
+          (!hasRealTime || providerSignalledMove);
 
         if (!statusChanged && !timeChanged) {
           summary.skipped.unchanged++;
