@@ -7,10 +7,19 @@ function makeMockPrisma() {
   const findVenueRefUnique = vi.fn();
   const upsertVenue = vi.fn();
   const upsertVenueRef = vi.fn().mockResolvedValue({});
+  // Provider-neutral artist refs. Defaults to "no match" so the existing
+  // legacy-column tests still exercise the fallback path they were
+  // written for.
+  const findArtistRefUnique = vi.fn().mockResolvedValue(null);
+  const upsertArtistRef = vi.fn().mockResolvedValue({});
 
   return {
     prisma: {
       artist: { findUnique: findArtistUnique, upsert: upsertArtist },
+      artistExternalRef: {
+        findUnique: findArtistRefUnique,
+        upsert: upsertArtistRef,
+      },
       venue: { upsert: upsertVenue },
       venueExternalRef: {
         findUnique: findVenueRefUnique,
@@ -20,6 +29,8 @@ function makeMockPrisma() {
     mocks: {
       findArtistUnique,
       upsertArtist,
+      findArtistRefUnique,
+      upsertArtistRef,
       findVenueRefUnique,
       upsertVenue,
       upsertVenueRef,
@@ -445,5 +456,89 @@ describe("resolveVenue — DICE path", () => {
     );
     expect(setup.mocks.findVenueRefUnique).not.toHaveBeenCalled();
     expect(setup.mocks.upsertVenueRef).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveArtist — provider-neutral external refs
+// ---------------------------------------------------------------------------
+
+describe("resolveArtist — provider-neutral externalIds", () => {
+  let setup: ReturnType<typeof makeMockPrisma>;
+  beforeEach(() => {
+    setup = makeMockPrisma();
+  });
+
+  it("resolves via ArtistExternalRef without touching the name upsert", async () => {
+    setup.mocks.findArtistRefUnique.mockResolvedValueOnce({
+      artist: { id: "a1", name: "Beach House", ticketmasterId: null, diceId: null },
+    });
+
+    const result = await resolveArtist(
+      { name: "BEACH HOUSE (variant spelling)", externalIds: [{ provider: "ticketmaster", id: "K8v1" }] },
+      { prisma: setup.prisma },
+    );
+
+    expect(result.id).toBe("a1");
+    // The whole point: a variant spelling collapses onto the canonical row.
+    expect(result.name).toBe("Beach House");
+    expect(setup.mocks.upsertArtist).not.toHaveBeenCalled();
+  });
+
+  it("stamps a ref when the artist is created by name", async () => {
+    setup.mocks.upsertArtist.mockResolvedValueOnce({
+      id: "a2", name: "New Artist", ticketmasterId: null, diceId: null,
+    });
+
+    await resolveArtist(
+      { name: "New Artist", externalIds: [{ provider: "ticketmaster", id: "K8v2" }] },
+      { prisma: setup.prisma },
+    );
+
+    expect(setup.mocks.upsertArtistRef).toHaveBeenCalledOnce();
+    const call = setup.mocks.upsertArtistRef.mock.calls[0]![0];
+    expect(call.create).toMatchObject({
+      provider: "ticketmaster",
+      providerArtistId: "K8v2",
+      artistId: "a2",
+    });
+  });
+
+  /**
+   * The architectural guarantee: adding a provider must not require
+   * editing this file. "axs" is not referenced anywhere in the source.
+   */
+  it("supports a provider the resolver has never heard of", async () => {
+    setup.mocks.upsertArtist.mockResolvedValueOnce({
+      id: "a3", name: "Some Band", ticketmasterId: null, diceId: null,
+    });
+
+    await resolveArtist(
+      { name: "Some Band", externalIds: [{ provider: "axs", id: "axs-999" }] },
+      { prisma: setup.prisma },
+    );
+
+    const call = setup.mocks.upsertArtistRef.mock.calls[0]![0];
+    expect(call.create).toMatchObject({ provider: "axs", providerArtistId: "axs-999" });
+    // and no legacy column was invented for it
+    expect(setup.mocks.upsertArtist.mock.calls[0]![0].create).toMatchObject({
+      ticketmasterId: null,
+      diceId: null,
+    });
+  });
+
+  it("de-duplicates a legacy id that is also passed as an externalId", async () => {
+    setup.mocks.upsertArtist.mockResolvedValueOnce({
+      id: "a4", name: "Dup", ticketmasterId: "K8v4", diceId: null,
+    });
+
+    await resolveArtist(
+      { name: "Dup", ticketmasterId: "K8v4", externalIds: [{ provider: "ticketmaster", id: "K8v4" }] },
+      { prisma: setup.prisma },
+    );
+
+    // one ref lookup, one ref write — not two of each
+    expect(setup.mocks.findArtistRefUnique).toHaveBeenCalledOnce();
+    expect(setup.mocks.upsertArtistRef).toHaveBeenCalledOnce();
   });
 });

@@ -111,7 +111,23 @@ model Artist {
   lastSetlistfmFetchAt DateTime?
 
   shows                Show[]
+  externalRefs         ArtistExternalRef[]
   providerMatchReviews ProviderMatchReview[]
+}
+
+model ArtistExternalRef {
+  id               String   @id @default(cuid())
+  artistId         String
+  provider         String
+  providerArtistId String
+  rawPayload       Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  artist           Artist   @relation(fields: [artistId], references: [id])
+
+  @@unique([provider, providerArtistId])
+  @@index([artistId])
 }
 
 model Venue {
@@ -159,7 +175,13 @@ model Show {
   externalRefs     ShowExternalRef[]
   setlistCache     SetlistCache?
 
+  // Provider-reported lifecycle. Only an EXPLICIT provider signal moves
+  // this off "scheduled" — a show vanishing from a feed never does,
+  // because providers drop events once they have happened.
+  status           String   @default("scheduled")
+
   createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt @default(now())
 
   @@unique([artistId, venueId, localDate])
   @@index([localDate])
@@ -171,6 +193,10 @@ model ShowExternalRef {
   provider        String
   providerEventId String
   rawPayload      Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt @default(now())
+  /** Last time this provider still listed the event. Never used to delete. */
+  lastSeenAt      DateTime?
 
   show            Show @relation(fields: [showId], references: [id])
 

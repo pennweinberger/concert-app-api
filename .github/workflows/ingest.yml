@@ -1,0 +1,102 @@
+name: Ingest
+
+# Scheduling lives here rather than in vercel.json because the Vercel
+# Hobby plan allows exactly 2 cron jobs, and DICE + Bowery already use
+# both. GitHub Actions costs nothing, allows finer schedules, and keeps
+# each provider independently triggerable.
+#
+# Deliberately NOT a single dispatcher: every provider is its own job so
+# one upstream outage cannot take the others down with it.
+#
+# DICE and Bowery stay on Vercel Cron for now. To move one here later,
+# copy the ticketmaster job and point `path` at its endpoint — the
+# endpoints are already independently callable and share the same
+# CRON_SECRET bearer contract.
+
+on:
+  schedule:
+    # 09:30 UTC daily — offset from the DICE (09:00) and Bowery (10:00)
+    # Vercel crons so the three never contend for the same DB connection.
+    # DATABASE_URL pins connection_limit=1, so overlapping runs would
+    # serialise against each other.
+    - cron: "30 9 * * *"
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Which provider to run
+        required: true
+        default: ticketmaster
+        type: choice
+        options: [ticketmaster]
+      allSlices:
+        description: Run all six 30-day slices (initial backfill)
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+      maxWrites:
+        description: Override the per-run write budget
+        required: false
+        type: string
+
+concurrency:
+  # Never let a slow run overlap the next schedule.
+  group: ingest-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  ticketmaster:
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event.inputs.provider == 'ticketmaster'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger Ticketmaster ingestion
+        env:
+          API_BASE: ${{ vars.API_BASE || 'https://concert-app-api.vercel.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ALL_SLICES: ${{ github.event.inputs.allSlices || 'false' }}
+          MAX_WRITES: ${{ github.event.inputs.maxWrites }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET secret is not set on this repository"
+            exit 1
+          fi
+
+          URL="${API_BASE}/internal/ingest/ticketmaster"
+          QS="allSlices=${ALL_SLICES}"
+          if [ -n "${MAX_WRITES:-}" ]; then QS="${QS}&maxWrites=${MAX_WRITES}"; fi
+
+          echo "POST ${URL}?${QS}"
+
+          # -sS keeps curl quiet but still surfaces errors. The body is
+          # captured separately from the status so a failure still prints
+          # the server's explanation.
+          HTTP_CODE=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
+            --max-time 600 \
+            -X POST "${URL}?${QS}" \
+            -H "Authorization: Bearer ${CRON_SECRET}")
+
+          echo "HTTP ${HTTP_CODE}"
+          echo "--- response ---"
+          cat /tmp/out.json || true
+          echo
+
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "::error::Ticketmaster ingestion failed with HTTP ${HTTP_CODE}"
+            exit 1
+          fi
+
+          # Surface the run totals in the Actions summary so a failure or
+          # a silent drop in volume is visible without opening the DB.
+          {
+            echo "### Ticketmaster ingestion"
+            echo ""
+            echo '```json'
+            cat /tmp/out.json
+            echo ""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

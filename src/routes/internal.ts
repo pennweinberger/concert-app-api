@@ -13,6 +13,7 @@ import { runDiceIngestion } from "../lib/diceIngest.js";
 import { fetchVenuePageHtml } from "../lib/dice.js";
 import { runBoweryIngestion } from "../lib/boweryIngest.js";
 import { fetchBoweryFeed, fetchBoweryPerVenueFeed } from "../lib/bowery.js";
+import { runTicketmasterIngestion } from "../lib/ticketmasterIngest.js";
 import { withIngestRun, detectTrigger } from "../lib/ingestRun.js";
 
 export function registerInternalRoutes(
@@ -213,4 +214,79 @@ export function registerInternalRoutes(
 
   app.post("/internal/ingest/bowery", handleBoweryIngest);
   app.get("/internal/ingest/bowery", handleBoweryIngest);
+
+  // Ticketmaster NYC ingestion. Inert unless BOTH CRON_SECRET and
+  // TICKETMASTER_INGEST_ENABLED are set. Independently callable — it is
+  // scheduled from GitHub Actions rather than Vercel Cron (Hobby allows
+  // 2 cron jobs and DICE + Bowery already use both), and deliberately not
+  // bundled into a shared dispatcher so one provider failing cannot take
+  // the others down.
+  //
+  // Operator controls:
+  //   ?allSlices=true  run all six 30-day slices (initial backfill)
+  //   ?slices=0,2      run specific slice indices
+  //   ?maxWrites=N     override the per-run write budget
+  const handleTicketmasterIngest = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
+    const cronSecret = process.env.CRON_SECRET;
+    const enabled = process.env.TICKETMASTER_INGEST_ENABLED === "true";
+    if (!cronSecret || !enabled) {
+      return reply
+        .status(503)
+        .send({ error: "Ticketmaster ingestion not configured" });
+    }
+    const auth = request.headers["authorization"];
+    if (!auth || auth !== `Bearer ${cronSecret}`) {
+      return reply.status(401).send({ error: "Unauthorized" });
+    }
+
+    const q = request.query as {
+      allSlices?: string;
+      slices?: string;
+      maxWrites?: string;
+    };
+    const allSlices = q.allSlices === "true";
+    const slices = q.slices
+      ? q.slices
+          .split(",")
+          .map((s) => Number(s.trim()))
+          .filter((n) => Number.isInteger(n) && n >= 0)
+      : undefined;
+    const rawMax = Number(q.maxWrites);
+    const maxWrites =
+      Number.isFinite(rawMax) && rawMax > 0 ? Math.floor(rawMax) : undefined;
+
+    try {
+      const summary = await withIngestRun(
+        {
+          prisma,
+          provider: "ticketmaster",
+          trigger: detectTrigger(request.headers),
+        },
+        () =>
+          runTicketmasterIngestion({
+            prisma,
+            now: () => new Date(),
+            allSlices,
+            ...(slices && slices.length > 0 ? { slices } : {}),
+            ...(maxWrites !== undefined ? { maxWrites } : {}),
+          }),
+      );
+      return reply.status(200).send(summary);
+    } catch (err: any) {
+      // Caught errors bypass the global handler that forwards to Sentry,
+      // so scheduled failures would otherwise be invisible.
+      app.log.error(err);
+      Sentry.captureException(err);
+      return reply.status(500).send({
+        error: "Ticketmaster ingestion failed",
+        details: err?.message || String(err),
+      });
+    }
+  };
+
+  app.post("/internal/ingest/ticketmaster", handleTicketmasterIngest);
+  app.get("/internal/ingest/ticketmaster", handleTicketmasterIngest);
 }

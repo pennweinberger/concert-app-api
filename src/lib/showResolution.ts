@@ -33,8 +33,17 @@ export type ResolveArtistDeps = {
   prisma: PrismaClient;
 };
 
+/** A stable id for an entity in some upstream provider's catalog. */
+export type ProviderRef = { provider: string; id: string };
+
 export type ResolveArtistInput = {
   name: string;
+  /**
+   * Provider-neutral ids. Preferred — any provider can pass its own
+   * without this file learning about it.
+   */
+  externalIds?: ProviderRef[];
+  /** Legacy convenience inputs, kept so existing callers are untouched. */
   ticketmasterId?: string | null;
   diceId?: string | null;
 };
@@ -46,35 +55,77 @@ export type ResolvedArtist = {
   diceId: string | null;
 };
 
+/** Merge the legacy named inputs into the neutral ref list, de-duplicated. */
+function collectArtistRefs(input: ResolveArtistInput): ProviderRef[] {
+  const refs: ProviderRef[] = [];
+  const push = (provider: string, id: string | null | undefined) => {
+    if (!id) return;
+    if (refs.some((r) => r.provider === provider && r.id === id)) return;
+    refs.push({ provider, id });
+  };
+  for (const r of input.externalIds ?? []) push(r.provider, r.id);
+  push(TICKETMASTER_PROVIDER, input.ticketmasterId);
+  push(DICE_PROVIDER, input.diceId);
+  return refs;
+}
+
 export async function resolveArtist(
   input: ResolveArtistInput,
   deps: ResolveArtistDeps,
 ): Promise<ResolvedArtist> {
-  // 1. Try Ticketmaster id if provided.
+  const refs = collectArtistRefs(input);
+  const select = {
+    id: true,
+    name: true,
+    ticketmasterId: true,
+    diceId: true,
+  } as const;
+
+  // 1. ArtistExternalRef is the provider-neutral lookup — this is what
+  //    lets a new provider dedupe onto an existing artist without adding
+  //    a column per provider.
+  for (const ref of refs) {
+    const hit = await deps.prisma.artistExternalRef.findUnique({
+      where: {
+        provider_providerArtistId: {
+          provider: ref.provider,
+          providerArtistId: ref.id,
+        },
+      },
+      include: { artist: { select } },
+    });
+    if (hit?.artist) return hit.artist;
+  }
+
+  // 2. Legacy column lookup. The migration backfilled these into the ref
+  //    table, so this is belt-and-braces for rows written between deploy
+  //    and migration — and it is what keeps the old columns authoritative
+  //    until they are dropped.
   if (input.ticketmasterId) {
     const byTm = await deps.prisma.artist.findUnique({
       where: { ticketmasterId: input.ticketmasterId },
-      select: { id: true, name: true, ticketmasterId: true, diceId: true },
+      select,
     });
     if (byTm) return byTm;
   }
-
-  // 2. Try DICE id if provided.
   if (input.diceId) {
     const byDice = await deps.prisma.artist.findUnique({
       where: { diceId: input.diceId },
-      select: { id: true, name: true, ticketmasterId: true, diceId: true },
+      select,
     });
     if (byDice) return byDice;
   }
 
-  // 3. Fall back to name upsert. Stamp whichever ids we have so future
-  //    calls can resolve via the definitive id path.
+  // 3. Fall back to a race-safe name upsert (Artist_name_key).
+  //
+  //    Only ever FILLS the legacy id columns — never clears one that is
+  //    already set, and never renames. Provider data must not overwrite
+  //    what Afterset already holds.
   const updateData: { ticketmasterId?: string; diceId?: string } = {};
   if (input.ticketmasterId) updateData.ticketmasterId = input.ticketmasterId;
   if (input.diceId) updateData.diceId = input.diceId;
 
-  const upserted = await deps.prisma.artist.upsert({
+  const artist = await deps.prisma.artist.upsert({
     where: { name: input.name },
     update: updateData,
     create: {
@@ -82,9 +133,31 @@ export async function resolveArtist(
       ticketmasterId: input.ticketmasterId ?? null,
       diceId: input.diceId ?? null,
     },
-    select: { id: true, name: true, ticketmasterId: true, diceId: true },
+    select,
   });
-  return upserted;
+
+  // 4. Stamp the neutral refs. Dual-writing alongside the legacy columns
+  //    is deliberate: it keeps /shows/confirm and the DICE/Bowery
+  //    orchestrators resolving exactly as before while the ref table
+  //    becomes the real source of truth.
+  for (const ref of refs) {
+    await deps.prisma.artistExternalRef.upsert({
+      where: {
+        provider_providerArtistId: {
+          provider: ref.provider,
+          providerArtistId: ref.id,
+        },
+      },
+      update: { artistId: artist.id },
+      create: {
+        provider: ref.provider,
+        providerArtistId: ref.id,
+        artistId: artist.id,
+      },
+    });
+  }
+
+  return artist;
 }
 
 // ---------------------------------------------------------------------------
