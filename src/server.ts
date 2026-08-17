@@ -1039,12 +1039,65 @@ app.get(
           venue: tmVenue?.name,
           venueTicketmasterId: tmVenue?.id ?? null,
           city: tmVenue?.city?.name,
+          state: tmVenue?.state?.stateCode ?? null,
           localDate: event.dates?.start?.localDate,
           ticketUrl: event.url,
         };
       }) || [];
 
-    return { items };
+    // MARKET SCOPE.
+    //
+    // This is a LIVE passthrough, so unlike our own table it holds nothing
+    // we have classified — a bare keyword search happily returns Boston,
+    // Hartford, and Bergen in Norway. Gating our database search alone left
+    // this wide open, and since the frontend merges both sources the
+    // ungated half surfaced out-of-market shows in search AND in the review
+    // flow.
+    //
+    // Eligibility uses the same rules as everywhere else:
+    //   1. venue we already know (by Ticketmaster id) -> its real market
+    //      membership. We ingest the whole New York DMA daily, so most
+    //      in-market venues resolve here.
+    //   2. venue we have never seen -> the five-borough (city, state)
+    //      check, which is what lets a genuinely new NYC room through.
+    // Anything else is dropped.
+    const tmVenueIds = [
+      ...new Set(
+        items
+          .map((i: any) => i.venueTicketmasterId)
+          .filter((v: unknown): v is string => typeof v === "string" && v.length > 0),
+      ),
+    ];
+    const knownVenues = tmVenueIds.length
+      ? await prisma.venueExternalRef.findMany({
+          where: {
+            provider: "ticketmaster",
+            providerVenueId: { in: tmVenueIds as string[] },
+          },
+          select: {
+            providerVenueId: true,
+            venue: {
+              select: { markets: { select: { market: { select: { isActive: true } } } } },
+            },
+          },
+        })
+      : [];
+    const inMarketByTmId = new Map<string, boolean>(
+      knownVenues.map((r) => [
+        r.providerVenueId,
+        r.venue.markets.some((m) => m.market.isActive),
+      ]),
+    );
+
+    const scoped = items.filter((i: any) => {
+      const known = i.venueTicketmasterId
+        ? inMarketByTmId.get(i.venueTicketmasterId)
+        : undefined;
+      if (known !== undefined) return known;
+      return isFiveBoroughs(i.city, i.state);
+    });
+
+    return { items: scoped };
   } catch (err) {
     app.log.error(err);
     return reply.status(500).send({ error: "Failed to fetch shows" });
