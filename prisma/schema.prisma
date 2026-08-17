@@ -130,20 +130,77 @@ model ArtistExternalRef {
   @@index([artistId])
 }
 
+/// An Afterset-defined discovery scope, not a municipal boundary. "NYC"
+/// means the New York concert ecosystem, so it deliberately includes
+/// venues outside the five boroughs (MetLife, Prudential, UBS Arena).
+/// Markets are a PRODUCT restriction — ingestion is never scoped by them.
+model Market {
+  id        String   @id @default(cuid())
+  slug      String   @unique          // "nyc"
+  name      String                    // "New York City"
+  /// Only active markets are visible in search, feeds and reviewing.
+  isActive  Boolean  @default(false)
+  timezone  String?
+  createdAt DateTime @default(now())
+
+  venues    VenueMarket[]
+}
+
+/// Many-to-many ON PURPOSE. Markets are overlapping discovery scopes, not
+/// partitions: MetLife Stadium is in NYC today and would also belong to a
+/// future "New Jersey" market. A single Venue.marketId would force us to
+/// pick one and silently drop the venue from the other.
+model VenueMarket {
+  venueId    String
+  marketId   String
+  /// How the assignment was made: "seed" | "admin" | "user-auto".
+  source     String
+  assignedBy String?
+  createdAt  DateTime @default(now())
+
+  venue      Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  market     Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@id([venueId, marketId])
+  @@index([marketId])
+}
+
 model Venue {
   id               String   @id @default(cuid())
   name             String
   city             String
+  /// Two-letter code where the provider gives one. Needed to tell
+  /// "Middletown NY" from "Middletown OH" and to judge market
+  /// eligibility for user-submitted venues.
+  state            String?
   country          String?
   timezone         String?
   createdAt        DateTime @default(now())
   lastDiceFetchAt  DateTime?
 
+  /// When a human ruled on this venue's market membership. Combined with
+  /// the VenueMarket rows this gives three states:
+  ///   rows + decidedAt  -> in those markets
+  ///   no rows + decidedAt -> reviewed, deliberately outside every market
+  ///   no rows + null      -> NEEDS DECISION (the triage queue)
+  marketDecidedAt  DateTime?
+
   shows                Show[]
   externalRefs         VenueExternalRef[]
+  markets              VenueMarket[]
   providerMatchReviews ProviderMatchReview[]
 
+  /// TEMPORARY DEBT — revisit when AXS lands.
+  /// City is the least reliable field providers give us, and making it
+  /// part of identity has already manufactured duplicates (Knockdown
+  /// Center split Maspeth/Queens, Pacha New York split Brooklyn/New York).
+  /// It also lacks state, so "Middletown" in two states would collide —
+  /// which is why one provider disambiguated inside the NAME. Kept for now
+  /// because it is the race-safe upsert key; the replacement is to resolve
+  /// via VenueExternalRef and route fuzzy matches to ProviderMatchReview,
+  /// the same pattern already used for artists.
   @@unique([name, city])
+  @@index([marketDecidedAt])
 }
 
 model VenueExternalRef {

@@ -22,6 +22,7 @@
 
 import type { PrismaClient } from "@prisma/client";
 import { NOT_BLOCKED_COUNT } from "./moderation.js";
+import { activeMarketVenueFilter } from "./markets.js";
 
 export const MIN_SHOW_SEARCH_QUERY = 2;
 export const DEFAULT_SHOW_SEARCH_LIMIT = 20;
@@ -58,11 +59,21 @@ export async function searchShows(
 
   const now = input.now ?? new Date();
 
+  // Market scope. Ingestion still pulls the whole New York DMA and we
+  // never delete anything, so out-of-market shows stay in the database —
+  // they are simply not discoverable while their venue sits outside an
+  // active market. Promoting a venue later makes its whole back catalogue
+  // appear at once.
   const matches = {
-    OR: [
-      { artist: { name: { contains: q, mode: "insensitive" as const } } },
-      { venue: { name: { contains: q, mode: "insensitive" as const } } },
-      { venue: { city: { contains: q, mode: "insensitive" as const } } },
+    AND: [
+      { venue: activeMarketVenueFilter() },
+      {
+        OR: [
+          { artist: { name: { contains: q, mode: "insensitive" as const } } },
+          { venue: { name: { contains: q, mode: "insensitive" as const } } },
+          { venue: { city: { contains: q, mode: "insensitive" as const } } },
+        ],
+      },
     ],
   };
 

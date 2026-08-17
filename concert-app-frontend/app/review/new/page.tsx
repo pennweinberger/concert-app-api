@@ -55,6 +55,7 @@ export default function NewReviewPage() {
   const [manualArtist, setManualArtist] = useState("");
   const [manualVenue, setManualVenue] = useState("");
   const [manualCity, setManualCity] = useState("");
+  const [manualState, setManualState] = useState("");
   const [manualDate, setManualDate] = useState("");
   const [manualError, setManualError] = useState<string | null>(null);
   const [manualSubmitting, setManualSubmitting] = useState(false);
@@ -181,10 +182,18 @@ export default function NewReviewPage() {
     const artist = manualArtist.trim();
     const venue = manualVenue.trim();
     const city = manualCity.trim();
+    const state = manualState.trim().toUpperCase();
     const localDate = manualDate.trim();
 
-    if (!artist || !venue || !city || !localDate) {
-      setManualError("Artist, venue, city and date are all required.");
+    if (!artist || !venue || !city || !state || !localDate) {
+      // State is required here (unlike provider-sourced rows) because
+      // market eligibility can't be judged from a city alone — "New York"
+      // exists in several states.
+      setManualError("Artist, venue, city, state and date are all required.");
+      return;
+    }
+    if (!/^[A-Za-z]{2}$/.test(state)) {
+      setManualError("Use a two-letter state code, e.g. NY or NJ.");
       return;
     }
     // A review implies you were there, so a future date is never valid.
@@ -202,13 +211,24 @@ export default function NewReviewPage() {
       const res = await fetch(`${API_BASE}/shows/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ artist, venue, city, localDate }),
+        body: JSON.stringify({ artist, venue, city, state, localDate }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.showId) {
         setManualError(data?.error || "Couldn't add that show. Try again.");
         return;
       }
+      // Out-of-market venue: the show and venue were saved, but reviewing
+      // is refused while Afterset is NYC-only. Stop BEFORE the compose
+      // step so no one writes a review that can't be published.
+      if (data.marketEligible === false) {
+        setManualError(
+          `Afterset is New York City only right now. We've saved ${venue}, ${city} ${state} ` +
+            `and will add it as we expand — your review will be possible once it's approved.`,
+        );
+        return;
+      }
+
       // Straight into the compose step, same as picking a search result.
       setPreloadedShowId(data.showId);
       setSelectedShow({
@@ -332,6 +352,13 @@ export default function NewReviewPage() {
 
       if (res.status === 403) {
         const data = await res.json().catch(() => ({}));
+        if (data.error === "out_of_market") {
+          setError(
+            data.message ||
+              "Afterset is New York City only right now — this show's venue is outside our current market.",
+          );
+          return;
+        }
         if (data.reason === "email_not_verified") {
           // Everything they wrote (selectedShow, rating, reviewText) stays
           // in state — show the verify nudge and let them retry.
@@ -588,6 +615,7 @@ export default function NewReviewPage() {
                     ["Artist", manualArtist, setManualArtist, "Hilary Duff"],
                     ["Venue", manualVenue, setManualVenue, "Madison Square Garden"],
                     ["City", manualCity, setManualCity, "New York"],
+                    ["State", manualState, setManualState, "NY"],
                   ] as const
                 ).map(([label, value, setter, placeholder]) => (
                   <label key={label} style={{ display: "block", marginBottom: "10px" }}>
@@ -605,7 +633,7 @@ export default function NewReviewPage() {
                       value={value}
                       onChange={(e) => setter(e.target.value)}
                       placeholder={placeholder}
-                      maxLength={label === "City" ? 120 : 200}
+                      maxLength={label === "State" ? 2 : label === "City" ? 120 : 200}
                       style={{
                         width: "100%",
                         padding: "11px 12px",

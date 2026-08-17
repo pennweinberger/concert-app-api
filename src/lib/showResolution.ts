@@ -171,6 +171,8 @@ export type ResolveVenueDeps = {
 export type ResolveVenueInput = {
   name: string;
   city: string;
+  /** Two-letter code. Only ever FILLS a null — never overwrites. */
+  state?: string | null;
   ticketmasterId?: string | null;
   diceId?: string | null;
 };
@@ -223,12 +225,27 @@ export async function resolveVenue(
 
   // 3. Fall back to (name, city) upsert (race-safe via
   //    Venue_name_city_key).
+  // `update` only ever fills a missing state — provider data must not
+  // overwrite what Afterset already holds.
   const venue = await deps.prisma.venue.upsert({
     where: { name_city: { name: input.name, city: input.city } },
+    // Empty update on purpose: an existing venue's fields are Afterset's,
+    // not the provider's. State is filled separately, and only when null.
     update: {},
-    create: { name: input.name, city: input.city },
-    select: { id: true, name: true, city: true },
+    create: {
+      name: input.name,
+      city: input.city,
+      ...(input.state ? { state: input.state } : {}),
+    },
+    select: { id: true, name: true, city: true, state: true },
   });
+
+  if (input.state && !venue.state) {
+    await deps.prisma.venue.update({
+      where: { id: venue.id },
+      data: { state: input.state },
+    });
+  }
 
   // 4. Stamp any provider links we have. These upserts are race-safe
   //    via the (provider, providerVenueId) unique index.

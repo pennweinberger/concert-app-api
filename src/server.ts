@@ -33,6 +33,12 @@ import {
 } from "./lib/notifications.js";
 import { NOT_BLOCKED, NOT_BLOCKED_COUNT } from "./lib/moderation.js";
 import {
+  activeMarketShowFilter,
+  isShowInActiveMarket,
+  isFiveBoroughs,
+  NYC_SLUG,
+} from "./lib/markets.js";
+import {
   createReport,
   listOpenReportsGrouped,
   blockContent,
@@ -1065,6 +1071,7 @@ app.post(
     artist?: unknown;
     venue?: unknown;
     city?: unknown;
+    state?: unknown;
     localDate?: unknown;
     artistTicketmasterId?: string | null;
     venueTicketmasterId?: string | null;
@@ -1074,6 +1081,11 @@ app.post(
   const artist = str(body.artist);
   const venue = str(body.venue);
   const city = str(body.city);
+  // Two-letter state. Optional for provider-sourced calls (Ticketmaster
+  // rows already resolve to a known venue); the manual form collects it
+  // because market eligibility cannot be judged from a city alone —
+  // "New York" exists in several states.
+  const state = str(body.state).toUpperCase().slice(0, 2);
   const localDate = str(body.localDate);
 
   if (!artist || !venue || !city || !localDate) {
@@ -1112,10 +1124,53 @@ app.post(
       {
         name: venue,
         city,
+        ...(state ? { state } : {}),
         ticketmasterId: body.venueTicketmasterId ?? null,
       },
       { prisma },
     );
+
+    // Market eligibility for a venue we have not classified yet.
+    //
+    // Existing venues keep whatever decision was already made — this only
+    // ever ADDS a market to something brand new, and never overrides an
+    // admin. A five-borough address qualifies automatically so the common
+    // case stays frictionless; anything else is left as needs-decision,
+    // which is what blocks the review downstream.
+    const venueRow = await prisma.venue.findUnique({
+      where: { id: venueRecord.id },
+      select: { marketDecidedAt: true, markets: { select: { marketId: true } } },
+    });
+    let marketEligible = (venueRow?.markets.length ?? 0) > 0;
+
+    if (!marketEligible && !venueRow?.marketDecidedAt) {
+      if (isFiveBoroughs(city, state)) {
+        const nyc = await prisma.market.findUnique({
+          where: { slug: NYC_SLUG },
+          select: { id: true, isActive: true },
+        });
+        if (nyc) {
+          await prisma.venueMarket.upsert({
+            where: {
+              venueId_marketId: { venueId: venueRecord.id, marketId: nyc.id },
+            },
+            update: {},
+            create: {
+              venueId: venueRecord.id,
+              marketId: nyc.id,
+              source: "user-auto",
+            },
+          });
+          await prisma.venue.update({
+            where: { id: venueRecord.id },
+            data: { marketDecidedAt: new Date() },
+          });
+          marketEligible = nyc.isActive;
+        }
+      }
+      // Deliberately NOT marking marketDecidedAt otherwise: an unresolved
+      // venue must stay in the needs-decision queue for an admin.
+    }
 
     // Show resolution: findUnique first so the `existing` flag stays
     // accurate for happy-path callers; on a concurrent-create race,
@@ -1131,7 +1186,7 @@ app.post(
     });
 
     if (existingShow) {
-      return { showId: existingShow.id, existing: true };
+      return { showId: existingShow.id, existing: true, marketEligible };
     }
 
     try {
@@ -1143,7 +1198,7 @@ app.post(
           localDate: parsedDate,
         },
       });
-      return { showId: showRecord.id, existing: false };
+      return { showId: showRecord.id, existing: false, marketEligible };
     } catch (createErr: any) {
       if (createErr?.code === "P2002") {
         const winner = await prisma.show.findUnique({
@@ -1156,7 +1211,7 @@ app.post(
           },
         });
         if (winner) {
-          return { showId: winner.id, existing: true };
+          return { showId: winner.id, existing: true, marketEligible };
         }
       }
       throw createErr;
@@ -1229,6 +1284,18 @@ app.post("/reviews", async (request, reply) => {
 
   if (!showId) {
     return reply.status(400).send({ error: "showId is required" });
+  }
+
+  // Market gate. Enforced HERE, not just by hiding UI — the launch is
+  // NYC-only and the client cannot be trusted to respect that. The show
+  // itself is left alone; only reviewing it is refused, so if the venue
+  // is promoted into a market later this same request succeeds.
+  if (!(await isShowInActiveMarket(showId, { prisma }))) {
+    return reply.status(422).send({
+      error: "out_of_market",
+      message:
+        "Afterset is New York City only right now. This show's venue is outside our current market.",
+    });
   }
   if (
     typeof ratingOverall !== "number" ||
@@ -1599,8 +1666,12 @@ app.get("/feed", async (request, reply) => {
     }
 
     // Fetch limit+1 so we know whether there's another page.
+    // Market scope. Out-of-market shows stay in the database — they are
+    // just not discoverable while their venue sits outside an active
+    // market. Ingestion is never scoped by this.
     const reviewWhere = {
       ...NOT_BLOCKED,
+      show: activeMarketShowFilter(),
       ...(followingIds ? { userId: { in: followingIds } } : {}),
       ...(cursor ? { publishedAt: { lt: cursor } } : {}),
     };
@@ -1675,6 +1746,7 @@ app.get("/feed", async (request, reply) => {
     const attendances = await prisma.attendance.findMany({
       where: {
         userId: { in: followingIds ?? [] },
+        show: activeMarketShowFilter(),
         ...(cursor ? { attendedAt: { lt: cursor } } : {}),
       },
       orderBy: { attendedAt: "desc" },

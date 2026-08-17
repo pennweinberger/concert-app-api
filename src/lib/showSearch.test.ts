@@ -86,7 +86,8 @@ describe("searchShows — query shape", () => {
 
   it("matches artist.name, venue.name and venue.city case-insensitively on BOTH scans", async () => {
     for (const which of ["past", "upcoming"] as const) {
-      const or = call(setup.mocks, which).where.AND[1].OR;
+      // where.AND = [ dateClause, { AND: [ marketFilter, { OR: [...] } ] } ]
+      const or = call(setup.mocks, which).where.AND[1].AND[1].OR;
       expect(or).toContainEqual({
         artist: { name: { contains: "Beatles", mode: "insensitive" } },
       });
@@ -95,6 +96,17 @@ describe("searchShows — query shape", () => {
       });
       expect(or).toContainEqual({
         venue: { city: { contains: "Beatles", mode: "insensitive" } },
+      });
+    }
+  });
+
+  it("scopes BOTH scans to active markets", () => {
+    // The launch is NYC-only: out-of-market shows stay in the database
+    // but must not be discoverable.
+    for (const which of ["past", "upcoming"] as const) {
+      const marketClause = call(setup.mocks, which).where.AND[1].AND[0];
+      expect(marketClause).toEqual({
+        venue: { markets: { some: { market: { isActive: true } } } },
       });
     }
   });
