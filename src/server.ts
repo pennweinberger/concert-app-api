@@ -32,6 +32,8 @@ import {
   MAX_NOTIFICATIONS_LIMIT,
 } from "./lib/notifications.js";
 import { NOT_BLOCKED, NOT_BLOCKED_COUNT } from "./lib/moderation.js";
+import { resolveRateLimitStore } from "./lib/rateLimitStore.js";
+import { verifyTurnstile } from "./lib/turnstile.js";
 import {
   activeMarketShowFilter,
   isShowInActiveMarket,
@@ -122,9 +124,14 @@ app.register(fastifyJwt, { secret: JWT_SECRET });
 // this inline implementation since the surface area is small and the
 // semantics we want (per-IP, fixed window, attach as preHandler) are
 // trivial to write directly.
-type RateBucket = { count: number; resetAt: number };
-const rateBuckets = new Map<string, RateBucket>();
-const MAX_RATE_BUCKETS = 10_000;
+// Counters live in a SHARED store (Upstash) so limits are global rather
+// than per-instance. See src/lib/rateLimitStore.ts for why that matters
+// and for the fail-open policy. Without Upstash env vars this falls back
+// to the previous in-memory behaviour automatically.
+const rateLimitStore = resolveRateLimitStore(process.env, (err) => {
+  app.log.error({ err }, "rate limit store unavailable — failing open");
+  if (process.env.SENTRY_DSN_API) Sentry.captureException(err);
+});
 
 function makeRateLimit(name: string, max: number, windowMs: number) {
   return async function rateLimitHook(
@@ -132,31 +139,23 @@ function makeRateLimit(name: string, max: number, windowMs: number) {
     reply: FastifyReply,
   ) {
     const ip = request.ip || "unknown";
-    const key = `${name}:${ip}`;
-    const now = Date.now();
-    const bucket = rateBuckets.get(key);
+    const key = `rl:${name}:${ip}`;
 
-    if (!bucket || bucket.resetAt < now) {
-      // First request in a new window — initialize bucket.
-      if (rateBuckets.size >= MAX_RATE_BUCKETS) {
-        // Hard cap so a flood of unique IPs can't OOM the function. Drop
-        // the entire map; next request from each IP starts a fresh window.
-        rateBuckets.clear();
-      }
-      rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
-      reply.header("X-RateLimit-Limit", String(max));
-      reply.header("X-RateLimit-Remaining", String(max - 1));
-      return;
-    }
+    const { count, resetSeconds, degraded } = await rateLimitStore.hit(
+      key,
+      windowMs,
+    );
 
-    bucket.count++;
-    const remaining = Math.max(0, max - bucket.count);
+    // Degraded means the shared store was unreachable and we chose to let
+    // the request through. Don't advertise a limit we aren't enforcing.
+    if (degraded) return;
+
+    const remaining = Math.max(0, max - count);
     reply.header("X-RateLimit-Limit", String(max));
     reply.header("X-RateLimit-Remaining", String(remaining));
 
-    if (bucket.count > max) {
-      const retryAfterSec = Math.ceil((bucket.resetAt - now) / 1000);
-      reply.header("Retry-After", String(retryAfterSec));
+    if (count > max) {
+      reply.header("Retry-After", String(Math.max(1, resetSeconds)));
       return reply.status(429).send({
         error: "Too many requests. Try again shortly.",
       });
@@ -409,7 +408,25 @@ app.post(
     handle?: unknown;
     email?: unknown;
     password?: unknown;
+    turnstileToken?: unknown;
   };
+
+  // Bot gate. Runs BEFORE any validation or database work so a script
+  // can't use this endpoint to probe which handles and emails are taken.
+  // See lib/turnstile.ts: a missing or invalid token is rejected, but a
+  // Cloudflare outage fails open rather than taking signup down.
+  const turnstile = await verifyTurnstile(body.turnstileToken, request.ip, {
+    onError: (err) => {
+      app.log.error({ err }, "Turnstile unavailable — allowing signup");
+      if (process.env.SENTRY_DSN_API) Sentry.captureException(err);
+    },
+  });
+  if (!turnstile.ok) {
+    return reply.status(400).send({
+      error: "captcha_failed",
+      message: "Please complete the verification and try again.",
+    });
+  }
 
   const handle = normalizeHandle(body.handle);
   if (!handle) {

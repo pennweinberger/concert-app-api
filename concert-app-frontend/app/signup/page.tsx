@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import TurnstileWidget from "../components/TurnstileWidget";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { setSession } from "../lib/auth";
@@ -18,6 +19,10 @@ function SignUpForm() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Turnstile token. Stays null when Cloudflare isn't configured or the
+  // widget failed to load; the server fails open in both cases, so we
+  // never block submission on it client-side.
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   async function submit() {
     const cleanedHandle = handle.trim().replace(/^@/, "");
@@ -45,11 +50,18 @@ function SignUpForm() {
           handle: cleanedHandle,
           email: cleanedEmail,
           password,
+          ...(turnstileToken ? { turnstileToken } : {}),
         }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (data.error === "captcha_failed") {
+          setError(
+            data.message || "Please complete the verification and try again.",
+          );
+          return;
+        }
         if (res.status === 409) {
           const msg = (data?.error as string | undefined) ?? "";
           if (msg.toLowerCase().includes("email")) {
@@ -214,6 +226,7 @@ function SignUpForm() {
         </div>
       )}
 
+      <TurnstileWidget onToken={setTurnstileToken} />
       <button
         onClick={submit}
         disabled={submitting}
