@@ -416,12 +416,35 @@ app.post(
   // See lib/turnstile.ts: a missing or invalid token is rejected, but a
   // Cloudflare outage fails open rather than taking signup down.
   const turnstile = await verifyTurnstile(body.turnstileToken, request.ip, {
-    onError: (err) => {
-      app.log.error({ err }, "Turnstile unavailable — allowing signup");
+    onError: (err, kind) => {
+      if (kind === "misconfigured") {
+        // Permanent until a human fixes it, and it takes signup down —
+        // page someone. Escalated above the usual error level precisely
+        // so it can't sit unnoticed the way a silent fail-open would.
+        app.log.fatal({ err }, "Turnstile MISCONFIGURED — signup is failing closed");
+        if (process.env.SENTRY_DSN_API) {
+          Sentry.captureException(err, {
+            level: "fatal",
+            tags: { area: "turnstile", kind: "misconfiguration" },
+          });
+        }
+        return;
+      }
+      app.log.error({ err }, "Turnstile unavailable — allowing signup (fail open)");
       if (process.env.SENTRY_DSN_API) Sentry.captureException(err);
     },
   });
   if (!turnstile.ok) {
+    // A misconfiguration is our fault, not the user's. Say so honestly
+    // with a 503 rather than implying they failed a check — and keep it
+    // distinguishable from a real challenge failure in logs and metrics.
+    if (turnstile.reason === "misconfigured") {
+      return reply.status(503).send({
+        error: "captcha_unavailable",
+        message:
+          "Sign-up is temporarily unavailable. We've been alerted — please try again shortly.",
+      });
+    }
     return reply.status(400).send({
       error: "captcha_failed",
       message: "Please complete the verification and try again.",

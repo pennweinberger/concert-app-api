@@ -20,9 +20,19 @@
 //         a rare outage window is a possible, recoverable one — and the
 //         shared rate limiter still applies underneath.
 //
-// The residual risk is that an attacker able to detect (or induce) a
-// Turnstile outage gets a window with only rate limiting in front of them.
-// Accepted deliberately; the outage is logged loudly so it is not silent.
+//   3. Cloudflare tells us OUR configuration is wrong (bad or missing
+//      secret, malformed request).
+//      -> FAIL CLOSED, with a high-priority alert.
+//         This is the one case that must NOT fail open. An outage is
+//         transient and self-healing; a misconfiguration is PERMANENT
+//         until somebody notices. Failing open here would silently disable
+//         CAPTCHA indefinitely while every dashboard stayed green — the
+//         worst possible outcome, because the control looks present and
+//         isn't. Better to make signup visibly fail so it gets fixed.
+//
+// The residual risk in case 2 is that an attacker able to detect (or
+// induce) a Turnstile outage gets a window with only rate limiting in
+// front of them. Accepted deliberately; the outage is logged loudly.
 
 const VERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
@@ -31,13 +41,24 @@ const DEFAULT_TIMEOUT_MS = 4000;
 
 export type TurnstileOutcome =
   | { ok: true; reason: "verified" | "not_configured" | "provider_unavailable" }
-  | { ok: false; reason: "missing_token" | "invalid_token"; codes?: string[] };
+  | {
+      ok: false;
+      reason: "missing_token" | "invalid_token" | "misconfigured";
+      codes?: string[];
+    };
+
+/** Distinguishes a transient outage from a permanent config fault. */
+export type TurnstileFailureKind = "unavailable" | "misconfigured";
 
 export type VerifyTurnstileDeps = {
   secret?: string | undefined;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
-  onError?: (err: unknown) => void;
+  /**
+   * `unavailable` is transient and fails open; `misconfigured` is
+   * permanent, fails closed, and should page someone.
+   */
+  onError?: (err: unknown, kind: TurnstileFailureKind) => void;
 };
 
 export async function verifyTurnstile(
@@ -80,19 +101,23 @@ export async function verifyTurnstile(
     if (body?.success === true) return { ok: true, reason: "verified" };
 
     const codes = body?.["error-codes"] ?? [];
-    // These specific codes mean OUR configuration is broken, not that the
-    // user failed a challenge. Rejecting real signups because we shipped a
-    // bad secret would be self-inflicted; treat it as an outage and log.
+    // These codes mean OUR configuration is broken, not that the user
+    // failed a challenge. Fail CLOSED: a bad secret would otherwise
+    // disable CAPTCHA silently and permanently.
     const ourFault = codes.some((c) =>
       ["missing-input-secret", "invalid-input-secret", "bad-request"].includes(c),
     );
     if (ourFault) {
-      deps.onError?.(new Error(`Turnstile misconfigured: ${codes.join(",")}`));
-      return { ok: true, reason: "provider_unavailable" };
+      deps.onError?.(
+        new Error(`Turnstile misconfigured: ${codes.join(",")}`),
+        "misconfigured",
+      );
+      return { ok: false, reason: "misconfigured", codes };
     }
     return { ok: false, reason: "invalid_token", codes };
   } catch (e) {
-    deps.onError?.(e);
+    // Network failure, timeout, or non-2xx — transient, so fail open.
+    deps.onError?.(e, "unavailable");
     return { ok: true, reason: "provider_unavailable" };
   } finally {
     clearTimeout(timer);

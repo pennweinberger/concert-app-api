@@ -65,21 +65,33 @@ describe("verifyTurnstile — outage policy", () => {
   });
 
   /**
-   * A bad secret is OUR bug. Rejecting real signups because we shipped
-   * misconfiguration would be self-inflicted damage, so it is treated as
-   * an outage and logged rather than blamed on the user.
+   * The one case that must NOT fail open. An outage is transient; a bad
+   * secret is permanent until a human fixes it, so failing open there
+   * would silently disable CAPTCHA indefinitely while dashboards stayed
+   * green. Fail closed so it is impossible to miss.
    */
-  it("treats a misconfigured secret as an outage, not a failed challenge", async () => {
-    const onError = vi.fn();
+  it("FAILS CLOSED on a misconfigured secret, flagged separately from an outage", async () => {
     for (const code of ["missing-input-secret", "invalid-input-secret", "bad-request"]) {
+      const onError = vi.fn();
       const r = await verifyTurnstile("tok", undefined, {
         secret: "s",
         fetchImpl: ok({ success: false, "error-codes": [code] }),
         onError,
       });
-      expect(r).toMatchObject({ ok: true, reason: "provider_unavailable" });
+      expect(r).toMatchObject({ ok: false, reason: "misconfigured" });
+      // the caller needs to tell these apart to escalate correctly
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), "misconfigured");
     }
-    expect(onError).toHaveBeenCalledTimes(3);
+  });
+
+  it("labels a transient outage as 'unavailable', not 'misconfigured'", async () => {
+    const onError = vi.fn();
+    await verifyTurnstile("tok", undefined, {
+      secret: "s",
+      fetchImpl: vi.fn(async () => { throw new Error("down"); }) as unknown as typeof fetch,
+      onError,
+    });
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), "unavailable");
   });
 
   it("is inert until a secret is configured, so it ships ahead of provisioning", async () => {
