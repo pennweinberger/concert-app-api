@@ -36,7 +36,6 @@ type FeedItem =
       reviewId: string;
       userHandle: string;
       userName: string | null;
-      userAvatarUrl: string | null;
       ratingOverall: number;
       reviewTextRaw: string;
       publishedAt: string;
@@ -50,7 +49,6 @@ type FeedItem =
       attendanceId: string;
       userHandle: string;
       userName: string | null;
-      userAvatarUrl: string | null;
       attendedAt: string;
       show: FeedShow;
     };

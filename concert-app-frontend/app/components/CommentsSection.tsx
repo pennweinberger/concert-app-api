@@ -21,7 +21,6 @@ type CommentItem = {
   createdAt: string;
   userHandle: string;
   userName: string | null;
-  userAvatarUrl: string | null;
 };
 
 type Props = {
