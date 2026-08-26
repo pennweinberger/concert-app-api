@@ -48,7 +48,6 @@ type UserDetail = {
   id: string;
   handle: string;
   name: string | null;
-  avatarUrl: string | null;
   joinedAt: string;
   attendedShowCount: number;
   reviewCount: number;
@@ -338,7 +337,6 @@ export default function UserPage() {
                 <Avatar
                   handle={user.handle}
                   name={user.name}
-                  avatarUrl={user.avatarUrl}
                   size={64}
                 />
                 <h1
@@ -622,7 +620,6 @@ export default function UserPage() {
                     id: review.id,
                     userHandle: user.handle,
                     userName: user.name,
-                    userAvatarUrl: user.avatarUrl,
                     ratingOverall: review.ratingOverall,
                     reviewTextRaw: review.reviewTextRaw,
                     likeCount: review.likeCount,

@@ -22,7 +22,6 @@ export type ReviewItemData = {
   id: string;
   userHandle: string;
   userName: string | null;
-  userAvatarUrl: string | null;
   ratingOverall: number;
   reviewTextRaw: string;
   likeCount: number;
@@ -145,7 +144,6 @@ export default function ReviewItem({
               <Avatar
                 handle={review.userHandle}
                 name={review.userName}
-                avatarUrl={review.userAvatarUrl}
                 size={20}
               />
             </span>

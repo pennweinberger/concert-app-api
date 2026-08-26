@@ -23,7 +23,6 @@ export default function SettingsPage() {
 
   const [loaded, setLoaded] = useState(false);
   const [name, setName] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -40,7 +39,6 @@ export default function SettingsPage() {
         const data = await res.json();
         if (cancelled) return;
         setName(data.name ?? "");
-        setAvatarUrl(data.avatarUrl ?? "");
         setLoaded(true);
       } catch {
         // Best-effort prefill; user can still type values in.
@@ -69,7 +67,6 @@ export default function SettingsPage() {
         },
         body: JSON.stringify({
           name: name.trim() === "" ? null : name.trim(),
-          avatarUrl: avatarUrl.trim() === "" ? null : avatarUrl.trim(),
         }),
       });
       if (!res.ok) {
@@ -147,12 +144,7 @@ export default function SettingsPage() {
             borderRadius: "14px",
           }}
         >
-          <Avatar
-            handle={authUser.handle}
-            name={name}
-            avatarUrl={avatarUrl}
-            size={56}
-          />
+          <Avatar handle={authUser.handle} name={name} size={56} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: "bold", fontSize: "16px" }}>
               {name.trim() || `@${authUser.handle}`}
@@ -191,38 +183,6 @@ export default function SettingsPage() {
           />
           <div style={{ color: "#666", fontSize: "12px", marginTop: "6px" }}>
             Shown in place of @{authUser.handle}. Up to 50 characters.
-          </div>
-        </div>
-
-        <div style={{ marginBottom: "24px" }}>
-          <label
-            style={{
-              display: "block",
-              color: "#aaa",
-              marginBottom: "6px",
-              fontSize: "14px",
-            }}
-          >
-            Avatar URL
-          </label>
-          <input
-            value={avatarUrl}
-            onChange={(e) => setAvatarUrl(e.target.value)}
-            placeholder="https://… (optional)"
-            maxLength={500}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #333",
-              background: "#1a1a1a",
-              color: "#f4f1ea",
-              boxSizing: "border-box",
-            }}
-          />
-          <div style={{ color: "#666", fontSize: "12px", marginTop: "6px" }}>
-            Paste an http(s) URL to any image. Leave blank for the default
-            initial avatar.
           </div>
         </div>
 

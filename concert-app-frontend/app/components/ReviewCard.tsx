@@ -31,7 +31,6 @@ export type ReviewCardData = {
   reviewId: string;
   userHandle: string;
   userName: string | null;
-  userAvatarUrl?: string | null;
   ratingOverall: number;
   reviewTextRaw: string;
   likeCount: number;
@@ -180,7 +179,6 @@ export default function ReviewCard({
               <Avatar
                 handle={item.userHandle}
                 name={item.userName}
-                avatarUrl={item.userAvatarUrl ?? null}
                 size={25}
               />
               @{item.userHandle}

@@ -15,7 +15,6 @@ const MIN_QUERY_CHARS = 2;
 type UserSearchResult = {
   handle: string;
   name: string | null;
-  avatarUrl: string | null;
   followerCount: number;
   reviewCount: number;
   attendedShowCount: number;
@@ -152,7 +151,6 @@ export default function PeoplePage() {
               <Avatar
                 handle={u.handle}
                 name={u.name}
-                avatarUrl={u.avatarUrl}
                 size={40}
               />
               <div style={{ minWidth: 0 }}>

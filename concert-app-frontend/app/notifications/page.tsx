@@ -12,7 +12,6 @@ const API_BASE =
 type NotificationActor = {
   handle: string;
   name: string | null;
-  avatarUrl: string | null;
 };
 
 type NotificationItem = {
@@ -200,7 +199,6 @@ export default function NotificationsPage() {
               <Avatar
                 handle={n.actor?.handle ?? "?"}
                 name={n.actor?.name ?? null}
-                avatarUrl={n.actor?.avatarUrl ?? null}
                 size={40}
               />
               <div style={{ flex: 1, minWidth: 0 }}>

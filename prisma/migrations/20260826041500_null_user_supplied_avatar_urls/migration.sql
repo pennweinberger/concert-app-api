@@ -1,0 +1,13 @@
+-- Clear every user-supplied avatar URL.
+--
+-- These were arbitrary http(s) URLs rendered straight into an <img>, so each
+-- one leaked the viewer's IP, User-Agent and Referer to a host we do not
+-- control. The API no longer accepts them and the UI no longer renders them;
+-- this removes the values already stored.
+--
+-- The COLUMN is intentionally kept. First-party avatar uploads are planned
+-- after launch and will reuse it, at which point the URLs are ours rather
+-- than arbitrary third parties'.
+--
+-- Data-only and re-runnable: the WHERE clause makes a repeat run a no-op.
+UPDATE "User" SET "avatarUrl" = NULL WHERE "avatarUrl" IS NOT NULL;

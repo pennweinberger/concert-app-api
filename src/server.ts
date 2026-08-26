@@ -2528,37 +2528,24 @@ app.patch("/users/me", async (request, reply) => {
     }
   }
 
-  if (body.avatarUrl !== undefined) {
-    if (body.avatarUrl === null || body.avatarUrl === "") {
-      updates.avatarUrl = null;
-    } else if (typeof body.avatarUrl !== "string") {
-      return reply.status(400).send({ error: "avatarUrl must be a string" });
-    } else {
-      const trimmed = body.avatarUrl.trim();
-      if (trimmed.length === 0) {
-        updates.avatarUrl = null;
-      } else if (trimmed.length > 500) {
-        return reply
-          .status(400)
-          .send({ error: "avatarUrl must be at most 500 characters" });
-      } else {
-        // Sanity check: must parse as a URL with http(s) scheme.
-        let parsed: URL;
-        try {
-          parsed = new URL(trimmed);
-        } catch {
-          return reply
-            .status(400)
-            .send({ error: "avatarUrl must be a valid URL" });
-        }
-        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-          return reply
-            .status(400)
-            .send({ error: "avatarUrl must be an http(s) URL" });
-        }
-        updates.avatarUrl = trimmed;
-      }
-    }
+  // avatarUrl is deliberately NOT settable. It used to accept any http(s)
+  // URL, which every viewer's browser then fetched directly — handing an
+  // arbitrary third party their IP, User-Agent and Referer (and the Referer
+  // names the page they were reading). On a social product that is a
+  // deanonymization vector, not just a tracking one: set an avatar, learn
+  // the IP of everyone who looks at your profile.
+  //
+  // The column survives for first-party uploads later; nothing user-supplied
+  // may reach it in the meantime. Setting an avatar can only ever clear it:
+  //
+  //   { avatarUrl: null }  -> clears
+  //   { avatarUrl: "..." } -> ignored, not an error
+  //
+  // Ignored rather than rejected on purpose. A cached older frontend still
+  // posts this field alongside the display name, and 400-ing would stop
+  // those users saving their name over an input they can no longer see.
+  if (body.avatarUrl === null || body.avatarUrl === "") {
+    updates.avatarUrl = null;
   }
 
   if (Object.keys(updates).length === 0) {
