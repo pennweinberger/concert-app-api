@@ -10,5 +10,13 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   GRANT ALL ON SEQUENCES TO anon, authenticated;
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   GRANT ALL ON FUNCTIONS TO anon, authenticated;
-ALTER TABLE "User"              DISABLE ROW LEVEL SECURITY;
-ALTER TABLE "VerificationToken" DISABLE ROW LEVEL SECURITY;
+-- Disable RLS on every public table (reverses both phases).
+DO $$
+DECLARE t record;
+BEGIN
+  FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+           WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity
+  LOOP
+    EXECUTE format('ALTER TABLE %I DISABLE ROW LEVEL SECURITY', t.relname);
+  END LOOP;
+END $$;

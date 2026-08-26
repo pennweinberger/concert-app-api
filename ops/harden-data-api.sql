@@ -48,3 +48,36 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 --    restored by accident. Prisma (postgres, BYPASSRLS) is unaffected.
 ALTER TABLE "User"              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "VerificationToken" ENABLE ROW LEVEL SECURITY;
+
+-- ---------------------------------------------------------------------------
+-- PHASE 2 (applied 2026-08-25): RLS on the remaining tables.
+--
+-- Defence in depth only — the grants above are the actual control. RLS with
+-- ZERO policies denies every row to every non-BYPASSRLS role, so an
+-- accidental future GRANT cannot silently re-expose a table.
+--
+-- DO NOT ADD POLICIES. A policy is a rule about who may read rows THROUGH
+-- THE DATA API, which Afterset does not use. See ops/README.md.
+-- ---------------------------------------------------------------------------
+ALTER TABLE "Artist"              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ArtistExternalRef"   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Attendance"          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Follow"              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "IngestRun"           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Market"              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Notification"        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ProviderMatchReview" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Report"              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Review"              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ReviewComment"       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ReviewLike"          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "SetlistCache"        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Show"                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ShowExternalRef"     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Venue"               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "VenueExternalRef"    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "VenueMarket"         ENABLE ROW LEVEL SECURITY;
+-- Prisma's own migration bookkeeping. Verified afterwards that
+-- `prisma migrate status` still reads it (the engine connects as postgres,
+-- which has BYPASSRLS).
+ALTER TABLE "_prisma_migrations"  ENABLE ROW LEVEL SECURITY;
