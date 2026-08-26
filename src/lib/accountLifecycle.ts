@@ -15,12 +15,24 @@ import type { EmailSendResult } from "./email.js";
 const GRACE_DAYS = 30;
 const ANONYMIZED_HANDLE_PREFIX = "_deleted_";
 
-// Anonymized handle is deterministic per user-id so it never collides
-// with another anonymized user or with a future signup (which is
-// blocked from using `_` prefix at registration). Uses first 8 chars
-// of the cuid for compactness.
+// Deterministic per user-id, using the WHOLE id. Uniqueness here is not
+// cosmetic: `handle` is @unique, so a duplicate aborts the anonymizing
+// transaction, which aborts the whole sweep — every remaining due user
+// included — and does so again on every subsequent nightly run.
+//
+// This previously used `userId.slice(0, 8)`. A cuid's first 8 chars are
+// "c" plus 7 of its 8 base36 timestamp chars, so they only change every
+// ~14ms: 2000 ids generated in a burst yield 2 distinct prefixes. Any two
+// accounts created in the same instant — batch imports, a bot signup
+// burst — would have collided and permanently stalled deletions.
+//
+// The full id is the primary key, so collisions are impossible. It is
+// also 34 chars, which exceeds the 20-char registration limit, so unlike
+// the 17-char short form nobody can squat a tombstone handle to poison a
+// future deletion. Handles are never rendered raw — the frontend matches
+// the prefix and shows "[deleted user]" — so the extra length is unseen.
 export function anonymizedHandleFor(userId: string): string {
-  return `${ANONYMIZED_HANDLE_PREFIX}${userId.slice(0, 8)}`;
+  return `${ANONYMIZED_HANDLE_PREFIX}${userId}`;
 }
 
 export function isAnonymizedHandle(handle: string): boolean {

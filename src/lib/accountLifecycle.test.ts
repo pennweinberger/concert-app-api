@@ -17,16 +17,42 @@ const GRACE_MS = 30 * 24 * 60 * 60_000;
 // ---------------------------------------------------------------------------
 
 describe("anonymizedHandleFor", () => {
-  it("uses _deleted_<first-8-chars-of-id>", () => {
+  it("uses _deleted_<full-user-id>", () => {
     expect(anonymizedHandleFor("cm12345678abcdef")).toBe(
-      "_deleted_cm123456",
+      "_deleted_cm12345678abcdef",
     );
   });
 
-  it("collisions are not possible across distinct user ids", () => {
-    const a = anonymizedHandleFor("idAaaaaaaaa");
-    const b = anonymizedHandleFor("idBbbbbbbbb");
-    expect(a).not.toBe(b);
+  /**
+   * Regression. This previously truncated to the first 8 chars, and the
+   * old version of this test compared "idAaaaaaaaa" to "idBbbbbbbbb" —
+   * ids that differ inside the truncation, so it passed while the bug was
+   * live. Real cuids share their leading chars: they are "c" plus base36
+   * ms, so the first 8 chars only change every ~14ms.
+   *
+   * `handle` is @unique, so a collision aborts the sweep's transaction and
+   * with it every remaining user in the batch — permanently, since the
+   * same pair is retried every night.
+   */
+  it("does not collide for ids that share their first 8 characters", () => {
+    // Two cuids from the same millisecond — a realistic pair of accounts
+    // created in one batch import or signup burst.
+    const a = "cmt9jry0q00001dn1aaad0ek6";
+    const b = "cmt9jry0q00021dn1zzzc9xy4";
+    expect(a.slice(0, 8)).toBe(b.slice(0, 8)); // the old key was identical
+    expect(anonymizedHandleFor(a)).not.toBe(anonymizedHandleFor(b));
+  });
+
+  /**
+   * Registration allows a leading underscore (/^[a-zA-Z0-9_]{3,20}$/), so
+   * the only thing stopping someone reserving a tombstone handle and
+   * blocking a future deletion is that the real one is too long to
+   * register.
+   */
+  it("is longer than a registerable handle, so it cannot be squatted", () => {
+    const handle = anonymizedHandleFor("cmt9jry0q00001dn1aaad0ek6");
+    expect(handle.length).toBeGreaterThan(20);
+    expect(/^[a-zA-Z0-9_]{3,20}$/.test(handle)).toBe(false);
   });
 });
 
@@ -477,7 +503,7 @@ describe("cleanupAccountDeletions", () => {
       expect(call.data.passwordHash).toBe(null);
       expect(call.data.name).toBe(null);
       expect(call.data.avatarUrl).toBe(null);
-      expect(call.data.handle).toMatch(/^_deleted_[a-z0-9]{8}$/);
+      expect(call.data.handle).toMatch(/^_deleted_cmuserid[0-9]abcdef[0-9]{2}$/);
       expect(call.data.anonymizedAt).toBe(fixedNow);
     }
 
