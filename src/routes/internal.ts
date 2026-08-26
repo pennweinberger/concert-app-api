@@ -76,13 +76,29 @@ export function registerInternalRoutes(
       }
 
       try {
-        const summary = await cleanupAccountDeletions({
-          prisma,
-          now: () => new Date(),
-        });
+        // Wrapped so every sweep leaves an audit row. This job is what
+        // makes "we delete your data" true, so "did it run, and what did
+        // it do" has to be answerable after the fact.
+        const summary = await withIngestRun(
+          {
+            prisma,
+            provider: "account-cleanup",
+            trigger: detectTrigger(request.headers),
+          },
+          () =>
+            cleanupAccountDeletions({
+              prisma,
+              now: () => new Date(),
+            }),
+        );
         return reply.status(200).send(summary);
       } catch (err: any) {
+        // Caught errors never reach the global handler that forwards to
+        // Sentry, so capture explicitly. Without this a nightly sweep
+        // could fail silently and we would keep promising deletion we
+        // were no longer performing.
         app.log.error(err);
+        Sentry.captureException(err);
         return reply.status(500).send({
           error: "Cleanup failed",
           details: err?.message || String(err),

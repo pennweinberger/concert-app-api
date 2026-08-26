@@ -1,0 +1,95 @@
+name: Maintenance
+
+# Scheduled data-lifecycle jobs. Separate from ingest.yml on purpose:
+# these are privacy obligations, not content pipelines, and a slow or
+# failing provider ingest must never be able to delay or block them.
+#
+# Scheduling lives in GitHub Actions because the Vercel Hobby plan allows
+# exactly 2 cron jobs and DICE + Bowery already use both.
+
+on:
+  schedule:
+    # 04:15 UTC daily — deliberately hours clear of DICE (09:00),
+    # Ticketmaster (09:30) and Bowery (10:00). DATABASE_URL pins
+    # connection_limit=1, so overlapping jobs serialise against each other.
+    - cron: "15 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  # Never let a slow run overlap the next schedule.
+  group: maintenance-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  account-deletions:
+    name: Anonymize accounts past the deletion grace period
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Sweep account deletions
+        env:
+          API_BASE: ${{ vars.API_BASE || 'https://concert-app-api.vercel.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET secret is not set on this repository"
+            exit 1
+          fi
+
+          URL="${API_BASE}/internal/cleanup/account-deletions"
+
+          # The sweep anonymizes at most 100 accounts per call. Normally one
+          # call clears the queue, but looping means the 30-day promise still
+          # holds during a mass-deletion event instead of quietly falling
+          # behind at 100/day. Bounded so a bug can't spin forever.
+          MAX_PASSES=10
+          TOTAL_ANON=0
+          TOTAL_FOLLOWS=0
+          PASSES=0
+
+          for i in $(seq 1 "${MAX_PASSES}"); do
+            PASSES="${i}"
+
+            HTTP_CODE=$(curl -sS -o /tmp/cleanup.json -w '%{http_code}' \
+              --max-time 300 \
+              -X POST "${URL}" \
+              -H "Authorization: Bearer ${CRON_SECRET}")
+
+            if [ "${HTTP_CODE}" != "200" ]; then
+              echo "--- response ---"
+              cat /tmp/cleanup.json || true
+              echo
+              echo "::error::Account-deletion sweep failed with HTTP ${HTTP_CODE}"
+              exit 1
+            fi
+
+            ANON=$(jq -r '.anonymized // 0' /tmp/cleanup.json)
+            FOLLOWS=$(jq -r '.followsDeleted // 0' /tmp/cleanup.json)
+            TOTAL_ANON=$((TOTAL_ANON + ANON))
+            TOTAL_FOLLOWS=$((TOTAL_FOLLOWS + FOLLOWS))
+
+            echo "pass ${i}: anonymized=${ANON} followsDeleted=${FOLLOWS}"
+
+            # A short batch means the queue is drained. Stop.
+            if [ "${ANON}" -lt 100 ]; then
+              break
+            fi
+          done
+
+          if [ "${TOTAL_ANON}" -ge $((MAX_PASSES * 100)) ]; then
+            echo "::warning::Hit the ${MAX_PASSES}-pass cap; accounts may remain due. Next run will continue."
+          fi
+
+          {
+            echo "### Account-deletion sweep"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Accounts anonymized | ${TOTAL_ANON} |"
+            echo "| Follow rows deleted | ${TOTAL_FOLLOWS} |"
+            echo "| Passes | ${PASSES} |"
+            echo ""
+            echo "Reviews, comments, likes and attendance are retained by design."
+          } >> "$GITHUB_STEP_SUMMARY"

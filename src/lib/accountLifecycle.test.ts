@@ -61,10 +61,21 @@ function makeMockPrisma() {
   const updateToken = vi.fn().mockResolvedValue({});
   const updateManyTokens = vi.fn().mockResolvedValue({ count: 0 });
   const deleteManyFollows = vi.fn().mockResolvedValue({ count: 0 });
+  // Archive tables. Present only so a test can assert the sweep never
+  // touches them — retaining this content is a deliberate product
+  // decision, not an oversight.
+  const deleteManyReviews = vi.fn().mockResolvedValue({ count: 0 });
+  const deleteManyReviewLikes = vi.fn().mockResolvedValue({ count: 0 });
+  const deleteManyReviewComments = vi.fn().mockResolvedValue({ count: 0 });
+  const deleteManyAttendances = vi.fn().mockResolvedValue({ count: 0 });
 
   const txClient = {
     user: { update: updateUser },
     follow: { deleteMany: deleteManyFollows },
+    review: { deleteMany: deleteManyReviews },
+    reviewLike: { deleteMany: deleteManyReviewLikes },
+    reviewComment: { deleteMany: deleteManyReviewComments },
+    attendance: { deleteMany: deleteManyAttendances },
   };
 
   const $transaction = vi.fn().mockImplementation(async (arg: unknown) => {
@@ -96,6 +107,10 @@ function makeMockPrisma() {
       updateToken,
       updateManyTokens,
       deleteManyFollows,
+      deleteManyReviews,
+      deleteManyReviewLikes,
+      deleteManyReviewComments,
+      deleteManyAttendances,
       $transaction,
     },
   };
@@ -483,5 +498,90 @@ describe("cleanupAccountDeletions", () => {
     expect(result).toEqual({ anonymized: 0, followsDeleted: 0 });
     expect(setup.mocks.updateUser).not.toHaveBeenCalled();
     expect(setup.mocks.deleteManyFollows).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The concert archive is the product. Anonymization severs the identity
+   * but must never remove the contributions — a reviewer deleting their
+   * account cannot silently delete a show's review history with them.
+   */
+  it("never deletes reviews, comments, likes or attendance", async () => {
+    setup.mocks.findManyUsers.mockResolvedValueOnce([
+      { id: "cmuserid1abcdef12" },
+    ]);
+
+    await cleanupAccountDeletions({
+      prisma: setup.prisma,
+      now: () => fixedNow,
+    });
+
+    expect(setup.mocks.deleteManyReviews).not.toHaveBeenCalled();
+    expect(setup.mocks.deleteManyReviewLikes).not.toHaveBeenCalled();
+    expect(setup.mocks.deleteManyReviewComments).not.toHaveBeenCalled();
+    expect(setup.mocks.deleteManyAttendances).not.toHaveBeenCalled();
+
+    // The User row survives too — anonymized in place, never deleted, so
+    // the foreign keys those archive rows depend on stay intact.
+    const updates = setup.mocks.updateUser.mock.calls.map((c: any) => c[0]);
+    expect(updates.length).toBe(1);
+    expect(updates[0].data.anonymizedAt).toBe(fixedNow);
+  });
+
+  /**
+   * The job runs nightly and retries on failure, so re-processing an
+   * already-anonymized user must be impossible. anonymizedAt is the
+   * marker: set inside the same transaction, and excluded by the query.
+   */
+  it("is idempotent — an already-anonymized user is never picked up twice", async () => {
+    // Pass 1: one user due.
+    setup.mocks.findManyUsers.mockResolvedValueOnce([
+      { id: "cmuserid1abcdef12" },
+    ]);
+    const first = await cleanupAccountDeletions({
+      prisma: setup.prisma,
+      now: () => fixedNow,
+    });
+    expect(first.anonymized).toBe(1);
+
+    // The marker is written in the same transaction as the PII strip, so
+    // it cannot be set without the work having happened.
+    expect(setup.mocks.updateUser.mock.calls[0]![0].data.anonymizedAt).toBe(
+      fixedNow,
+    );
+
+    // Pass 2: the query excludes anonymizedAt != null, so the same user is
+    // no longer returned and no further writes occur.
+    setup.mocks.updateUser.mockClear();
+    setup.mocks.deleteManyFollows.mockClear();
+    setup.mocks.findManyUsers.mockResolvedValueOnce([]);
+
+    const second = await cleanupAccountDeletions({
+      prisma: setup.prisma,
+      now: () => fixedNow,
+    });
+    expect(second).toEqual({ anonymized: 0, followsDeleted: 0 });
+    expect(setup.mocks.updateUser).not.toHaveBeenCalled();
+    expect(setup.mocks.deleteManyFollows).not.toHaveBeenCalled();
+
+    for (const call of setup.mocks.findManyUsers.mock.calls) {
+      expect(call[0].where.anonymizedAt).toBe(null);
+    }
+  });
+
+  /**
+   * Anonymizing a day early would breach the grace period we tell users
+   * they have to change their mind.
+   */
+  it("does not touch a user still inside the grace period", async () => {
+    // The boundary is enforced by the query itself (deletedAt < now-30d),
+    // so assert the cutoff is exact rather than off by a day either way.
+    setup.mocks.findManyUsers.mockResolvedValueOnce([]);
+    await cleanupAccountDeletions({
+      prisma: setup.prisma,
+      now: () => fixedNow,
+    });
+    const where = setup.mocks.findManyUsers.mock.calls[0]![0].where;
+    expect(where.deletedAt.lt).toEqual(new Date(fixedNow.getTime() - GRACE_MS));
+    expect(setup.mocks.updateUser).not.toHaveBeenCalled();
   });
 });
