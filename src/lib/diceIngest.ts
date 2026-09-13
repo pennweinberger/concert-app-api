@@ -30,6 +30,12 @@ import {
   type DiceMusicEvent,
 } from "./diceParse.js";
 import {
+  inspectDiceVenuePage,
+  evaluateDiceRunHealth,
+  type DiceDriftPage,
+  type DiceRunHealth,
+} from "./diceHealth.js";
+import {
   resolveArtist as upsertArtist,
   resolveVenue as upsertVenue,
 } from "./showResolution.js";
@@ -79,6 +85,14 @@ export type DiceRunSummary = {
   errors: number;
   rateLimitedDuringRun: boolean;
   durationMs: number;
+  /** Events listed in venue-page JSON-LD, before the parser filters any. */
+  jsonLdEventsSeen: number;
+  /** Pages that listed events of which the parser accepted none. */
+  driftPages: DiceDriftPage[];
+  /** Venues with upcoming DICE-linked shows that yielded 0 events this run. */
+  activeVenuesWithZeroEvents: string[];
+  /** Verdict on the run. The route turns "unhealthy" into a failure. */
+  health: DiceRunHealth;
 };
 
 // ---------------------------------------------------------------------------
@@ -101,6 +115,10 @@ export async function runDiceIngestion(
     errors: 0,
     rateLimitedDuringRun: false,
     durationMs: 0,
+    jsonLdEventsSeen: 0,
+    driftPages: [],
+    activeVenuesWithZeroEvents: [],
+    health: { status: "healthy", reasons: [] },
   };
 
   // Load lastDiceFetchAt for each canonical venue (by name+city) so we
@@ -147,6 +165,8 @@ export async function runDiceIngestion(
 
   outer: for (const seedVenue of toProcess) {
     let canonicalVenueId: string | null = null;
+    // Health bookkeeping only — never affects which events are processed.
+    const eventsBeforeVenue = summary.eventsConsidered;
 
     for (const diceShortId of seedVenue.diceShortIds) {
       let html: string;
@@ -170,7 +190,22 @@ export async function runDiceIngestion(
         continue;
       }
 
+      // Observe what the page lists independently of what the parser
+      // accepts; a gap between the two is how markup drift shows up.
+      const pageStats = inspectDiceVenuePage(html);
+      summary.jsonLdEventsSeen += pageStats.rawEventCount;
+
       const parsed = parseDiceVenuePage(html);
+      if (pageStats.rawEventCount > 0 && (parsed?.events.length ?? 0) === 0) {
+        summary.driftPages.push({
+          diceShortId,
+          rawEventCount: pageStats.rawEventCount,
+          rawEventTypes: pageStats.rawEventTypes,
+        });
+        console.error(
+          `dice ingest: PARSER DRIFT on shortId=${diceShortId}: page lists ${pageStats.rawEventCount} events (types: ${pageStats.rawEventTypes.join(", ")}) but 0 were accepted`,
+        );
+      }
       if (!parsed) {
         summary.errors++;
         console.error(
@@ -221,6 +256,33 @@ export async function runDiceIngestion(
       );
       canonicalVenueId = venue.id;
     }
+
+    // Zero events from a venue we know is active is suspicious; zero from
+    // a venue with nothing upcoming is just a quiet week. Only count the
+    // former. A failed lookup must never break ingestion, so it is logged
+    // and treated as "not known active".
+    if (summary.eventsConsidered === eventsBeforeVenue) {
+      try {
+        const todayUtc = new Date(deps.now());
+        todayUtc.setUTCHours(0, 0, 0, 0);
+        const upcomingDiceShows = await deps.prisma.show.count({
+          where: {
+            venueId: canonicalVenueId,
+            localDate: { gte: todayUtc },
+            externalRefs: { some: { provider: PROVIDER } },
+          },
+        });
+        if (upcomingDiceShows > 0) {
+          summary.activeVenuesWithZeroEvents.push(seedVenue.canonicalName);
+        }
+      } catch (e) {
+        console.error(
+          `dice ingest: active-venue check failed for venue=${canonicalVenueId}`,
+          e,
+        );
+      }
+    }
+
     try {
       await deps.prisma.venue.update({
         where: { id: canonicalVenueId },
@@ -236,6 +298,7 @@ export async function runDiceIngestion(
   }
 
   summary.durationMs = deps.now().getTime() - startMs;
+  summary.health = evaluateDiceRunHealth(summary);
   return summary;
 }
 

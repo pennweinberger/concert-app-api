@@ -365,7 +365,8 @@ describe("runDiceIngestion — chunking", () => {
           upsert: upsertVenueMock,
         },
         artist: { findMany: findManyArtists },
-        show: { findMany: findManyShows },
+        // Health check: no venue in these fixtures has upcoming DICE shows.
+        show: { findMany: findManyShows, count: vi.fn().mockResolvedValue(0) },
       } as unknown as import("@prisma/client").PrismaClient,
       mocks: {
         findVenues,
@@ -432,5 +433,162 @@ describe("runDiceIngestion — chunking", () => {
     });
     expect(summary.skippedRecentlyFetched).toBe(0);
     expect(summary.processedDiceVenues).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runDiceIngestion — health checks (parser drift / quiet active venues)
+// ---------------------------------------------------------------------------
+
+describe("runDiceIngestion — health", () => {
+  const now = new Date("2026-09-13T09:00:00.000Z");
+  const twoVenues: DiceSeedVenue[] = [
+    { canonicalName: "Venue A", city: "Brooklyn", diceShortIds: ["aaa"] },
+    { canonicalName: "Venue B", city: "Brooklyn", diceShortIds: ["bbb"] },
+  ];
+
+  // Invented events that only mimic DICE's JSON-LD shapes.
+  const newFormatEvent = (i: number) => ({
+    "@type": "Event",
+    url: `https://dice.fm/event/0123456789abcdef0123456${i}`,
+    name: `Invented Act ${i}`,
+    startDate: "2026-10-02T22:30:00-04:00",
+    location: { "@type": "Place", name: "Test Room, Brooklyn" },
+  });
+  const legacyEvent = (i: number) => ({
+    ...newFormatEvent(i),
+    "@type": "MusicEvent",
+    url: `https://dice.fm/event/abc12${i}-invented-act-tickets`,
+  });
+  const page = (events: unknown[]) =>
+    `<script type="application/ld+json">${JSON.stringify({
+      "@type": "Place",
+      name: "Test Room, Brooklyn",
+      address: "1 Test St, Brooklyn, NY 11211, USA",
+      event: events,
+    })}</script>`;
+
+  function makeHealthSetup(opts: {
+    pages: Record<string, string | Error>;
+    upcomingDiceShowsByVenue?: Record<string, number>;
+    artistLookupFails?: boolean;
+  }) {
+    const updateVenue = vi.fn().mockResolvedValue({});
+    const countShows = vi.fn(async (args: any) =>
+      opts.upcomingDiceShowsByVenue?.[args.where.venueId] ?? 0,
+    );
+    const prisma = {
+      venue: {
+        findMany: vi.fn().mockResolvedValue([]),
+        update: updateVenue,
+        upsert: vi.fn(async (args: any) => ({
+          id: `venue_${args.where.name_city.name.replace(/\s+/g, "_")}`,
+          name: args.where.name_city.name,
+          city: args.where.name_city.city,
+        })),
+      },
+      artist: {
+        findMany: opts.artistLookupFails
+          ? vi.fn().mockRejectedValue(new Error("simulated processing failure"))
+          : vi.fn().mockResolvedValue([]),
+      },
+      show: { findMany: vi.fn().mockResolvedValue([]), count: countShows },
+    } as unknown as import("@prisma/client").PrismaClient;
+    const fetchVenuePageHtml = vi.fn(async (shortId: string) => {
+      const p = opts.pages[shortId];
+      if (p instanceof Error) throw p;
+      return p ?? page([]);
+    });
+    return { prisma, fetchVenuePageHtml, updateVenue, countShows };
+  }
+
+  const run = (s: ReturnType<typeof makeHealthSetup>, seed = twoVenues) =>
+    runDiceIngestion({
+      prisma: s.prisma,
+      fetchVenuePageHtml: s.fetchVenuePageHtml,
+      now: () => now,
+      seed,
+      limit: 5,
+    });
+
+  /**
+   * The actual September 2026 failure: the page lists events, the parser
+   * accepts none, and the run used to come back as a clean success.
+   */
+  it("flags parser drift when a page lists events the parser accepts none of", async () => {
+    const s = makeHealthSetup({
+      pages: { aaa: page([newFormatEvent(1), newFormatEvent(2), newFormatEvent(3)]) },
+    });
+    const summary = await run(s, twoVenues.slice(0, 1));
+
+    expect(summary.eventsConsidered).toBe(0);
+    expect(summary.errors).toBe(0); // exactly why this used to be invisible
+    expect(summary.jsonLdEventsSeen).toBe(3);
+    expect(summary.driftPages).toEqual([
+      { diceShortId: "aaa", rawEventCount: 3, rawEventTypes: ["Event"] },
+    ]);
+    expect(summary.health).toEqual({ status: "unhealthy", reasons: ["parser_drift"] });
+    // Monitoring observes; it does not abort the run's normal bookkeeping.
+    expect(s.updateVenue).toHaveBeenCalledOnce();
+  });
+
+  it("flags zero events from two known-active venues", async () => {
+    const s = makeHealthSetup({
+      pages: {},
+      upcomingDiceShowsByVenue: { venue_Venue_A: 4, venue_Venue_B: 2 },
+    });
+    const summary = await run(s);
+    expect(summary.activeVenuesWithZeroEvents).toEqual(["Venue A", "Venue B"]);
+    expect(summary.health).toEqual({
+      status: "unhealthy",
+      reasons: ["zero_events_from_active_venues"],
+    });
+    // Scoped to future shows at that venue that came from DICE.
+    const where = s.countShows.mock.calls[0]![0].where;
+    expect(where).toMatchObject({
+      venueId: "venue_Venue_A",
+      externalRefs: { some: { provider: "dice" } },
+    });
+    expect(where.localDate.gte).toEqual(new Date("2026-09-13T00:00:00.000Z"));
+  });
+
+  it("stays healthy when only one active venue is quiet, or quiet venues have nothing upcoming", async () => {
+    const s = makeHealthSetup({ pages: {}, upcomingDiceShowsByVenue: { venue_Venue_A: 3 } });
+    const summary = await run(s);
+    expect(summary.activeVenuesWithZeroEvents).toEqual(["Venue A"]);
+    expect(summary.health).toEqual({ status: "healthy", reasons: [] });
+  });
+
+  it("counts fetch failures at known-active venues as zero events", async () => {
+    const s = makeHealthSetup({
+      pages: { aaa: new Error("HTTP 503"), bbb: new Error("HTTP 503") },
+      upcomingDiceShowsByVenue: { venue_Venue_A: 1, venue_Venue_B: 1 },
+    });
+    const summary = await run(s);
+    expect(summary.errors).toBe(2);
+    expect(summary.health.reasons).toEqual(["zero_events_from_active_venues"]);
+  });
+
+  it("is healthy when events are accepted, without querying for activity", async () => {
+    // Processing is made to fail after acceptance: acceptance, not a
+    // successful write, is what proves the parser still understands the page.
+    const s = makeHealthSetup({
+      pages: { aaa: page([legacyEvent(1), legacyEvent(2)]) },
+      upcomingDiceShowsByVenue: { venue_Venue_A: 5 },
+      artistLookupFails: true,
+    });
+    const summary = await run(s, twoVenues.slice(0, 1));
+    expect(summary.eventsConsidered).toBe(2);
+    expect(summary.driftPages).toEqual([]);
+    expect(summary.health).toEqual({ status: "healthy", reasons: [] });
+    expect(s.countShows).not.toHaveBeenCalled();
+  });
+
+  it("never lets the activity lookup break ingestion", async () => {
+    const s = makeHealthSetup({ pages: {} });
+    (s.countShows as any).mockRejectedValue(new Error("db hiccup"));
+    const summary = await run(s);
+    expect(summary.processedDiceVenues).toBe(2);
+    expect(summary.health.status).toBe("healthy");
   });
 });

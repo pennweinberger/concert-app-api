@@ -10,6 +10,16 @@ vi.mock("../lib/setlistfmIngest.js", () => ({
 }));
 import { runIngestion } from "../lib/setlistfmIngest.js";
 
+// DICE health-check route tests: the orchestrator is mocked, and Sentry is
+// replaced with spies so we can prove a failure is captured AND flushed.
+vi.mock("../lib/diceIngest.js", () => ({ runDiceIngestion: vi.fn() }));
+vi.mock("@sentry/node", () => ({
+  captureException: vi.fn(),
+  flush: vi.fn().mockResolvedValue(true),
+}));
+import { runDiceIngestion } from "../lib/diceIngest.js";
+import * as Sentry from "@sentry/node";
+
 function makeApp(): FastifyInstance {
   const app = Fastify();
   // The route handler only uses prisma by passing it to runIngestion
@@ -134,5 +144,118 @@ describe("POST /internal/ingest/setlistfm — auth + inert behavior", () => {
       error: "Ingestion failed",
       details: "upstream boom",
     });
+  });
+});
+
+describe("GET /internal/ingest/dice — health checks", () => {
+  const originalEnv = { ...process.env };
+
+  function makeDiceApp() {
+    const ingestRun = {
+      create: vi.fn().mockResolvedValue({ id: "run_1" }),
+      update: vi.fn().mockResolvedValue({}),
+    };
+    const app = Fastify();
+    registerInternalRoutes(app, { ingestRun } as never);
+    return { app, ingestRun };
+  }
+
+  const baseSummary = {
+    processedDiceVenues: 5,
+    skippedRecentlyFetched: 0,
+    eventsConsidered: 0,
+    actions: { AUTO_MERGE: 0, CREATE_NEW: 0, REVIEW: 0 },
+    errors: 0,
+    rateLimitedDuringRun: false,
+    durationMs: 8222,
+    jsonLdEventsSeen: 0,
+    driftPages: [] as { diceShortId: string; rawEventCount: number; rawEventTypes: string[] }[],
+    activeVenuesWithZeroEvents: [] as string[],
+    health: { status: "healthy" as "healthy" | "unhealthy", reasons: [] as string[] },
+  };
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, CRON_SECRET: "s", DICE_INGEST_ENABLED: "true" };
+    vi.mocked(runDiceIngestion).mockReset();
+    vi.mocked(Sentry.captureException).mockClear();
+    vi.mocked(Sentry.flush).mockClear();
+  });
+
+  it("returns 200 and records success for a healthy run", async () => {
+    vi.mocked(runDiceIngestion).mockResolvedValueOnce({ ...baseSummary, eventsConsidered: 12 } as never);
+    const { app, ingestRun } = makeDiceApp();
+    const res = await app.inject({
+      method: "GET",
+      url: "/internal/ingest/dice",
+      headers: { authorization: "Bearer s" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(ingestRun.update.mock.calls[0]![0].data.status).toBe("success");
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The September 2026 state: pages list events, the parser accepts none.
+   * This must become a visible failure, keep its counts, and reach Sentry.
+   */
+  it("turns parser drift into a 500, keeps the counts, and reports to Sentry", async () => {
+    const unhealthy = {
+      ...baseSummary,
+      jsonLdEventsSeen: 15,
+      driftPages: [{ diceShortId: "8p85", rawEventCount: 15, rawEventTypes: ["Event"] }],
+      health: { status: "unhealthy" as const, reasons: ["parser_drift"] },
+    };
+    vi.mocked(runDiceIngestion).mockResolvedValueOnce(unhealthy as never);
+    const { app, ingestRun } = makeDiceApp();
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/internal/ingest/dice",
+      headers: { authorization: "Bearer s" },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({
+      error: "DICE ingestion unhealthy",
+      reasons: ["parser_drift"],
+      summary: { jsonLdEventsSeen: 15, eventsConsidered: 0 },
+    });
+
+    // IngestRun is "error" AND still holds the counts explaining it.
+    const data = ingestRun.update.mock.calls[0]![0].data;
+    expect(data.status).toBe("error");
+    expect(data.summary).toMatchObject({ driftPages: unhealthy.driftPages });
+    expect(data.error).toContain("parser_drift");
+
+    // Captured once, grouped by reason, with the summary attached...
+    expect(Sentry.captureException).toHaveBeenCalledOnce();
+    const [err, ctx] = vi.mocked(Sentry.captureException).mock.calls[0]! as [Error, any];
+    expect(err.name).toBe("DiceIngestHealthError");
+    expect(ctx).toMatchObject({
+      level: "error",
+      tags: { provider: "dice", ingest_health: "parser_drift" },
+      fingerprint: ["dice-ingest-health", "parser_drift"],
+      extra: { summary: { jsonLdEventsSeen: 15 } },
+    });
+    // ...and flushed before responding, so a frozen serverless instance
+    // cannot drop the event.
+    expect(Sentry.flush).toHaveBeenCalledOnce();
+    const flushOrder = vi.mocked(Sentry.flush).mock.invocationCallOrder[0]!;
+    const captureOrder = vi.mocked(Sentry.captureException).mock.invocationCallOrder[0]!;
+    expect(flushOrder).toBeGreaterThan(captureOrder);
+  });
+
+  it("still captures and flushes an ordinary ingestion error", async () => {
+    vi.mocked(runDiceIngestion).mockRejectedValueOnce(new Error("db down"));
+    const { app } = makeDiceApp();
+    const res = await app.inject({
+      method: "GET",
+      url: "/internal/ingest/dice",
+      headers: { authorization: "Bearer s" },
+    });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({ error: "DICE ingestion failed", details: "db down" });
+    expect(Sentry.captureException).toHaveBeenCalledOnce();
+    expect(Sentry.flush).toHaveBeenCalledOnce();
   });
 });

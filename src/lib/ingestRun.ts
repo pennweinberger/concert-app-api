@@ -74,6 +74,12 @@ export async function withIngestRun<T>(
           finishedAt: now(),
           durationMs: now().getTime() - startMs,
           error: (err?.message ?? String(err)).slice(0, 1000),
+          // A health-check failure is thrown after the run finished its
+          // work and carries the summary explaining why it failed. Keep it;
+          // otherwise the row records only "error" and the counts are lost.
+          ...(err && typeof err.summary === "object" && err.summary !== null
+            ? { summary: err.summary as object }
+            : {}),
         },
       });
     } catch {

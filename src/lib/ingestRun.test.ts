@@ -95,6 +95,42 @@ describe("withIngestRun", () => {
     expect(upd.data.finishedAt).toBeInstanceOf(Date);
   });
 
+  /**
+   * A health-check failure is thrown after the run has finished its work.
+   * Without this, the counts that explain WHY it failed would be discarded
+   * and the IngestRun row would only say "error".
+   */
+  it("on throw: keeps the run summary when the error carries one", async () => {
+    const { prisma, mocks } = makeMockPrisma();
+    const summary = { processedDiceVenues: 5, eventsConsidered: 0, driftPages: [{ diceShortId: "8p85" }] };
+    const err = Object.assign(new Error("DICE ingestion unhealthy"), { summary });
+
+    await expect(
+      withIngestRun(
+        { prisma, provider: "dice", trigger: "cron", now: () => fixedNow },
+        async () => {
+          throw err;
+        },
+      ),
+    ).rejects.toBe(err);
+
+    const upd = mocks.update.mock.calls[0]![0];
+    expect(upd.data).toMatchObject({ status: "error", error: "DICE ingestion unhealthy", summary });
+  });
+
+  it("on throw: writes no summary for an ordinary error", async () => {
+    const { prisma, mocks } = makeMockPrisma();
+    await expect(
+      withIngestRun(
+        { prisma, provider: "bowery", trigger: "cron", now: () => fixedNow },
+        async () => {
+          throw new Error("feed 500");
+        },
+      ),
+    ).rejects.toThrow();
+    expect(mocks.update.mock.calls[0]![0].data).not.toHaveProperty("summary");
+  });
+
   it("truncates very long error messages to 1000 chars", async () => {
     const { prisma, mocks } = makeMockPrisma();
     const longMsg = "x".repeat(5000);

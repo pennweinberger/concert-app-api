@@ -15,6 +15,10 @@ import { runBoweryIngestion } from "../lib/boweryIngest.js";
 import { fetchBoweryFeed, fetchBoweryPerVenueFeed } from "../lib/bowery.js";
 import { runTicketmasterIngestion } from "../lib/ticketmasterIngest.js";
 import { withIngestRun, detectTrigger } from "../lib/ingestRun.js";
+import {
+  assertDiceRunHealthy,
+  DiceIngestHealthError,
+} from "../lib/diceHealth.js";
 
 export function registerInternalRoutes(
   app: FastifyInstance,
@@ -151,16 +155,21 @@ export function registerInternalRoutes(
     try {
       const summary = await withIngestRun(
         { prisma, provider: "dice", trigger: detectTrigger(request.headers) },
-        () =>
-          runDiceIngestion({
-            prisma,
-            fetchVenuePageHtml,
-            now: () => new Date(),
-            ...(limit !== undefined ? { limit } : {}),
-            ...(minHoursBetweenFetches !== undefined
-              ? { minHoursBetweenFetches }
-              : {}),
-          }),
+        async () =>
+          // Health is asserted INSIDE withIngestRun so an unhealthy run is
+          // recorded as status "error" — with its summary kept — instead of
+          // a success that ingested nothing.
+          assertDiceRunHealthy(
+            await runDiceIngestion({
+              prisma,
+              fetchVenuePageHtml,
+              now: () => new Date(),
+              ...(limit !== undefined ? { limit } : {}),
+              ...(minHoursBetweenFetches !== undefined
+                ? { minHoursBetweenFetches }
+                : {}),
+            }),
+          ),
       );
       return reply.status(200).send(summary);
     } catch (err: any) {
@@ -168,7 +177,30 @@ export function registerInternalRoutes(
       // forwards to Sentry — so we capture explicitly here. Without this,
       // scheduled cron failures would be invisible in Sentry.
       app.log.error(err);
-      Sentry.captureException(err);
+      if (err instanceof DiceIngestHealthError) {
+        Sentry.captureException(err, {
+          level: "error",
+          tags: { provider: "dice", ingest_health: err.reasons.join("+") },
+          // One Sentry issue per failure mode, so a daily repeat of the
+          // same breakage stays one issue rather than scattering by message.
+          fingerprint: ["dice-ingest-health", ...err.reasons],
+          extra: { summary: err.summary },
+        });
+      } else {
+        Sentry.captureException(err);
+      }
+      // This runs as a serverless function that can be frozen as soon as
+      // the response is sent. Flush first, or the event may never leave.
+      await Sentry.flush(2000);
+
+      if (err instanceof DiceIngestHealthError) {
+        return reply.status(500).send({
+          error: "DICE ingestion unhealthy",
+          details: err.message,
+          reasons: err.reasons,
+          summary: err.summary,
+        });
+      }
       return reply.status(500).send({
         error: "DICE ingestion failed",
         details: err?.message || String(err),
