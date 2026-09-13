@@ -5,9 +5,10 @@
 // fetch per-event pages.
 //
 // Politeness:
-//   - User-Agent identifies as a non-AI ingestion bot (DICE's
-//     robots.txt explicitly blocks AI-class bots; ours must not look
-//     like one).
+//   - User-Agent says plainly that this is Afterset's ingestion crawler
+//     and links to the live product. It is never a browser string or
+//     another crawler's name. Afterset does not train AI models on this
+//     content.
 //   - Throttle: minimum interval between requests in this process.
 //   - Lazy env-var gate: DICE_INGEST_ENABLED=true required, else the
 //     client returns DiceDisabledError without making any HTTP call.
@@ -16,8 +17,11 @@
 // branch on cause (rate-limit vs. disabled vs. other).
 
 const VENUE_BASE_URL = "https://dice.fm/venue/";
-const USER_AGENT =
-  "Afterset-IngestionBot/1.0 (+https://afterset-pied.vercel.app/bot)";
+// Same identity string as the Ticketmaster client. It previously
+// advertised afterset-pied.vercel.app/bot, a pre-domain alias whose /bot
+// page never existed (404), so it told site operators nothing.
+export const DICE_USER_AGENT =
+  "Afterset-IngestionBot/1.0 (+https://afterset.fm)";
 const MIN_INTERVAL_MS = 1000;
 
 let lastRequestAt = 0;
@@ -72,7 +76,7 @@ export async function fetchVenuePageHtml(shortId: string): Promise<string> {
   const url = `${VENUE_BASE_URL}${encodeURIComponent(shortId)}`;
   const res = await fetch(url, {
     headers: {
-      "User-Agent": USER_AGENT,
+      "User-Agent": DICE_USER_AGENT,
       Accept: "text/html",
     },
   });
