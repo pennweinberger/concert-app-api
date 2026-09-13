@@ -23,6 +23,7 @@ import type { PrismaClient } from "@prisma/client";
 import { DiceDisabledError, DiceRateLimitError } from "./dice.js";
 import {
   parseDiceVenuePage,
+  toDiceRawPayload,
   parseDiceHeadliner,
   parseCityFromAddress,
   startDateToLocalDateUtcMidnight,
@@ -413,12 +414,12 @@ export async function applyDiceDecision(
           providerEventId: event.providerEventId,
         },
       },
-      update: { rawPayload: event as unknown as object },
+      update: { rawPayload: toDiceRawPayload(event) },
       create: {
         showId: decision.showId,
         provider: PROVIDER,
         providerEventId: event.providerEventId,
-        rawPayload: event as unknown as object,
+        rawPayload: toDiceRawPayload(event),
       },
     });
     return;
@@ -433,7 +434,7 @@ export async function applyDiceDecision(
         },
       },
       update: {
-        rawPayload: event as unknown as object,
+        rawPayload: toDiceRawPayload(event),
         candidateShowIds: decision.candidateShowIds,
         resolvedArtistId: decision.artistId,
         resolvedVenueId: decision.venueId,
@@ -442,7 +443,7 @@ export async function applyDiceDecision(
       create: {
         provider: PROVIDER,
         providerEventId: event.providerEventId,
-        rawPayload: event as unknown as object,
+        rawPayload: toDiceRawPayload(event),
         candidateShowIds: decision.candidateShowIds,
         resolvedArtistId: decision.artistId,
         resolvedVenueId: decision.venueId,
@@ -492,13 +493,13 @@ export async function applyDiceDecision(
       },
       update: {
         showId: show.id,
-        rawPayload: event as unknown as object,
+        rawPayload: toDiceRawPayload(event),
       },
       create: {
         showId: show.id,
         provider: PROVIDER,
         providerEventId: event.providerEventId,
-        rawPayload: event as unknown as object,
+        rawPayload: toDiceRawPayload(event),
       },
     });
   });

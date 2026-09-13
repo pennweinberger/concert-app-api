@@ -12,13 +12,38 @@ const sampleEvent: DiceMusicEvent = {
   url: "https://dice.fm/event/pyb9mp-themba-tickets",
   name: "THEMBA, TH4YS",
   startDate: "2026-06-20T22:30:00-04:00",
-  endDate: "2026-06-21T04:00:00-04:00",
   eventStatus: "https://schema.org/EventScheduled",
   locationName: "Elsewhere, Brooklyn",
-  locationAddress: "599 Johnson Ave #1, Brooklyn, NY 11237, USA",
-  imageUrls: ["https://dice-media.imgix.net/foo.jpg"],
-  description: null,
 };
+
+// The one payload shape DICE is allowed to persist (dice-minimal-v1).
+// Written out literally rather than derived from toDiceRawPayload, so a
+// change to the builder can't quietly change what these tests expect.
+const expectedPayload = {
+  _schema: "dice-minimal-v1",
+  url: "https://dice.fm/event/pyb9mp-themba-tickets",
+  name: "THEMBA, TH4YS",
+  startDate: "2026-06-20T22:30:00-04:00",
+  eventStatus: "https://schema.org/EventScheduled",
+  locationName: "Elsewhere, Brooklyn",
+};
+
+const ALLOWED_PAYLOAD_KEYS = Object.keys(expectedPayload).sort();
+
+/** Every rawPayload in a mock's create/update calls has exactly the approved keys. */
+function expectOnlyMinimalPayloads(mockFn: { mock: { calls: any[][] } }) {
+  const payloads = mockFn.mock.calls.flatMap((c) =>
+    [c[0]?.create?.rawPayload, c[0]?.update?.rawPayload].filter(
+      (p) => p !== undefined,
+    ),
+  );
+  expect(payloads.length).toBeGreaterThan(0);
+  for (const p of payloads) {
+    expect(Object.keys(p).sort()).toEqual(ALLOWED_PAYLOAD_KEYS);
+    expect(p).not.toHaveProperty("description");
+    expect(p).not.toHaveProperty("imageUrls");
+  }
+}
 
 function makeMockPrisma() {
   const upsertShowExternalRef = vi.fn().mockResolvedValue({});
@@ -99,7 +124,9 @@ describe("applyDiceDecision — AUTO_MERGE", () => {
       provider: "dice",
       providerEventId: "pyb9mp",
     });
-    expect(call.create.rawPayload).toEqual(sampleEvent);
+    expect(call.create.rawPayload).toEqual(expectedPayload);
+    // Update branch too: re-seeing an event must not re-store content.
+    expectOnlyMinimalPayloads(setup.mocks.upsertShowExternalRef);
     // No new Show, no transaction, no review row
     expect(setup.mocks.upsertShow).not.toHaveBeenCalled();
     expect(setup.mocks.$transaction).not.toHaveBeenCalled();
@@ -175,7 +202,9 @@ describe("applyDiceDecision — REVIEW", () => {
       candidateShowIds: ["s_candidate_1"],
       status: "pending",
     });
-    expect(call.create.rawPayload).toEqual(sampleEvent);
+    expect(call.create.rawPayload).toEqual(expectedPayload);
+    // Update branch too: re-seeing an event must not re-store content.
+    expectOnlyMinimalPayloads(setup.mocks.upsertProviderMatchReview);
     // NO ShowExternalRef on REVIEW path (per user spec)
     expect(setup.mocks.upsertShowExternalRef).not.toHaveBeenCalled();
     expect(setup.mocks.upsertShow).not.toHaveBeenCalled();
@@ -239,7 +268,9 @@ describe("applyDiceDecision — CREATE_NEW", () => {
       providerEventId: "pyb9mp",
       showId: "show_new",
     });
-    expect(refCall.create.rawPayload).toEqual(sampleEvent);
+    expect(refCall.create.rawPayload).toEqual(expectedPayload);
+    // Update branch too: re-seeing an event must not re-store content.
+    expectOnlyMinimalPayloads(setup.mocks.upsertShowExternalRef);
   });
 
   it("throws on CREATE_NEW without a resolved artistId (invariant)", async () => {

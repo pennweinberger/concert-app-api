@@ -5,6 +5,8 @@ import {
   parseCityFromAddress,
   parseDiceVenuePage,
   startDateToLocalDateUtcMidnight,
+  toDiceRawPayload,
+  DICE_RAW_PAYLOAD_SCHEMA,
 } from "./diceParse.js";
 
 // ---------------------------------------------------------------------------
@@ -198,14 +200,60 @@ describe("parseDiceVenuePage", () => {
     expect(parsed.events[0]!.providerEventId).toBe("pyb9mp");
     expect(parsed.events[0]!.name).toBe("THEMBA, TH4YS");
     expect(parsed.events[0]!.startDate).toBe("2026-06-20T22:30:00-04:00");
-    expect(parsed.events[0]!.endDate).toBe("2026-06-21T04:00:00-04:00");
     expect(parsed.events[0]!.eventStatus).toBe(
       "https://schema.org/EventScheduled",
     );
-    expect(parsed.events[0]!.imageUrls).toEqual([
-      "https://dice-media.imgix.net/foo.jpg",
-    ]);
+    expect(parsed.events[0]!.locationName).toBe("Elsewhere, Brooklyn");
     expect(parsed.events[1]!.providerEventId).toBe("pydg2k");
+  });
+
+  /**
+   * Data minimization. This fixture's page carries a description, an image,
+   * an end date and a street address, exactly as DICE's pages do. None of
+   * them is needed for matching, deduplication or the catalog, so the parser
+   * must not lift them out at all. Anything never extracted can't reach a
+   * database column by accident.
+   */
+  it("does not extract provider-authored content even when the page carries it", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({
+      "@type": "Place",
+      name: "Elsewhere, Brooklyn",
+      address: "599 Johnson Ave #1, Brooklyn, NY 11237, USA",
+      event: [
+        {
+          "@type": "MusicEvent",
+          url: "https://dice.fm/event/pyb9mp-themba-tickets",
+          name: "THEMBA, TH4YS",
+          startDate: "2026-06-20T22:30:00-04:00",
+          endDate: "2026-06-21T04:00:00-04:00",
+          eventStatus: "https://schema.org/EventScheduled",
+          location: {
+            "@type": "Place",
+            name: "Elsewhere, Brooklyn",
+            address: "599 Johnson Ave #1, Brooklyn, NY 11237, USA",
+          },
+          image: ["https://dice-media.imgix.net/foo.jpg"],
+          description: "A great show",
+        },
+      ],
+    })}</script>`;
+    const event = parseDiceVenuePage(html)!.events[0]!;
+
+    expect(Object.keys(event).sort()).toEqual(
+      [
+        "eventStatus",
+        "locationName",
+        "name",
+        "providerEventId",
+        "startDate",
+        "url",
+      ].sort(),
+    );
+    const serialized = JSON.stringify(event);
+    expect(serialized).not.toContain("A great show");
+    expect(serialized).not.toContain("imgix");
+    expect(serialized).not.toContain("599 Johnson");
+    expect(serialized).not.toContain("2026-06-21T04:00:00"); // endDate
   });
 
   it("returns null when no Place JSON-LD is present", () => {
@@ -293,5 +341,66 @@ describe("startDateToLocalDateUtcMidnight", () => {
     expect(
       startDateToLocalDateUtcMidnight(null as unknown as string),
     ).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toDiceRawPayload — the only shape DICE may write to rawPayload
+// ---------------------------------------------------------------------------
+
+describe("toDiceRawPayload", () => {
+  const event = {
+    providerEventId: "pyb9mp",
+    url: "https://dice.fm/event/pyb9mp-themba-tickets",
+    name: "THEMBA, TH4YS",
+    startDate: "2026-06-20T22:30:00-04:00",
+    eventStatus: "https://schema.org/EventScheduled",
+    locationName: "Elsewhere, Brooklyn",
+  };
+
+  it("uses the dice-minimal-v1 schema marker", () => {
+    // The cleanup migration matches on this literal. Changing it would
+    // make already-minimized rows look unminimized again.
+    expect(DICE_RAW_PAYLOAD_SCHEMA).toBe("dice-minimal-v1");
+  });
+
+  it("keeps exactly the approved provenance and matching fields", () => {
+    expect(toDiceRawPayload(event)).toEqual({
+      _schema: "dice-minimal-v1",
+      url: "https://dice.fm/event/pyb9mp-themba-tickets",
+      name: "THEMBA, TH4YS",
+      startDate: "2026-06-20T22:30:00-04:00",
+      eventStatus: "https://schema.org/EventScheduled",
+      locationName: "Elsewhere, Brooklyn",
+    });
+  });
+
+  it("does not duplicate providerEventId, which is already its own column", () => {
+    expect(toDiceRawPayload(event)).not.toHaveProperty("providerEventId");
+  });
+
+  it("stores absent values as null, so every row has an identical shape", () => {
+    const payload = toDiceRawPayload({
+      ...event,
+      eventStatus: null,
+      locationName: null,
+    });
+    expect(Object.keys(payload).sort()).toEqual(
+      ["_schema", "eventStatus", "locationName", "name", "startDate", "url"].sort(),
+    );
+    expect(payload.eventStatus).toBeNull();
+    expect(payload.locationName).toBeNull();
+  });
+
+  it("drops anything extra an input object happens to carry", () => {
+    // Guards against a future caller passing a richer object straight
+    // through: the builder copies named fields, never spreads its input.
+    const payload = toDiceRawPayload({
+      ...event,
+      description: "A great show",
+      imageUrls: ["https://dice-media.imgix.net/foo.jpg"],
+    } as unknown as typeof event);
+    expect(payload).not.toHaveProperty("description");
+    expect(payload).not.toHaveProperty("imageUrls");
   });
 });

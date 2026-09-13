@@ -5,8 +5,9 @@
 // is the entire ingestion payload — per-event pages don't expose their
 // own MusicEvent JSON-LD, so we don't fetch them.
 //
-// Per-MusicEvent we extract: providerEventId (from URL), name,
-// startDate (ISO with TZ offset), location, image, eventStatus.
+// Per-MusicEvent we extract only: providerEventId (from URL), url, name,
+// startDate (ISO with TZ offset), eventStatus and the location's name.
+// Descriptions, images, end dates and addresses are left on the page.
 // Performer is NOT in JSON-LD — it's encoded in the human-readable
 // `name`. We extract a headliner with the heuristic in
 // `parseDiceHeadliner` below; misfires route to ProviderMatchReview
@@ -137,18 +138,57 @@ export function parseCityFromAddress(address: string): string | null {
 const JSON_LD_RE =
   /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 
+// Only the fields Afterset needs for matching, deduplication and running
+// the catalog. DICE's pages also carry a description, images, an end date
+// and a street address. Those are deliberately NOT extracted: data that is
+// never lifted out of the page cannot end up in a column by accident.
 export type DiceMusicEvent = {
   providerEventId: string;
+  /** Provenance: lets a reviewer check a match against the source event. */
   url: string;
+  /** Raw event title. The only input to the headliner heuristic. */
   name: string;
   startDate: string; // ISO 8601 with TZ offset
-  endDate: string | null;
+  eventStatus: string | null;
+  /** DICE's room name. Needed to audit sibling-room → venue mapping. */
+  locationName: string | null;
+};
+
+/**
+ * Version marker stored inside every DICE rawPayload. The cleanup
+ * migration matches on this exact literal, so changing it would make
+ * already-minimized rows look unminimized.
+ */
+export const DICE_RAW_PAYLOAD_SCHEMA = "dice-minimal-v1";
+
+export type DiceRawPayload = {
+  _schema: typeof DICE_RAW_PAYLOAD_SCHEMA;
+  url: string;
+  name: string;
+  startDate: string;
   eventStatus: string | null;
   locationName: string | null;
-  locationAddress: string | null;
-  imageUrls: string[];
-  description: string | null;
 };
+
+/**
+ * The ONLY shape DICE ingestion may write to rawPayload, in both
+ * ShowExternalRef and ProviderMatchReview.
+ *
+ * Fields are copied by name, never spread, so a richer object handed in
+ * later still cannot leak extra content into storage. providerEventId is
+ * left out because both tables already hold it in its own column. Absent
+ * values are stored as null, so old and new rows share one shape.
+ */
+export function toDiceRawPayload(event: DiceMusicEvent): DiceRawPayload {
+  return {
+    _schema: DICE_RAW_PAYLOAD_SCHEMA,
+    url: event.url,
+    name: event.name,
+    startDate: event.startDate,
+    eventStatus: event.eventStatus ?? null,
+    locationName: event.locationName ?? null,
+  };
+}
 
 export type ParsedDiceVenuePage = {
   venueName: string;
@@ -203,32 +243,21 @@ export function parseDiceVenuePage(html: string): ParsedDiceVenuePage | null {
     if (!startDate) continue;
 
     let locationName: string | null = null;
-    let locationAddress: string | null = null;
     if (typeof ev["location"] === "object" && ev["location"] !== null) {
       const loc = ev["location"] as Record<string, unknown>;
       if (typeof loc["name"] === "string") locationName = loc["name"];
-      if (typeof loc["address"] === "string") locationAddress = loc["address"];
     }
 
-    let imageUrls: string[] = [];
-    const img = ev["image"];
-    if (typeof img === "string") imageUrls = [img];
-    else if (Array.isArray(img))
-      imageUrls = img.filter((x): x is string => typeof x === "string");
-
+    // description, image, endDate and location.address are intentionally
+    // not read. See DiceMusicEvent.
     events.push({
       providerEventId,
       url,
       name,
       startDate,
-      endDate: typeof ev["endDate"] === "string" ? ev["endDate"] : null,
       eventStatus:
         typeof ev["eventStatus"] === "string" ? ev["eventStatus"] : null,
       locationName,
-      locationAddress,
-      imageUrls,
-      description:
-        typeof ev["description"] === "string" ? ev["description"] : null,
     });
   }
 
