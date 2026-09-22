@@ -12,6 +12,8 @@
 // so callers can branch on cause (auth vs rate-limit vs not-found) without
 // inspecting raw status codes.
 
+import { INGESTION_USER_AGENT } from "./userAgent.js";
+
 const BASE_URL = "https://api.setlist.fm/rest/1.0";
 const MIN_INTERVAL_MS = 1000;
 
@@ -110,7 +112,7 @@ async function setlistfmGet<T>(path: string): Promise<T> {
     headers: {
       Accept: "application/json",
       "x-api-key": apiKey,
-      "User-Agent": "Afterset/1.0 (+https://afterset-pied.vercel.app)",
+      "User-Agent": INGESTION_USER_AGENT,
     },
   });
 

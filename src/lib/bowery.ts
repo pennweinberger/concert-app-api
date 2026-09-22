@@ -5,15 +5,16 @@
 // Stadium, Under the K Bridge Park) plus the rest of the feed which the
 // orchestrator filters out via the venue allowlist.
 //
-// Politeness: non-AI User-Agent, gated by BOWERY_INGEST_ENABLED so the
-// route stays inert when the env var isn't set.
+// Politeness: the shared non-AI ingestion User-Agent (see userAgent.ts),
+// gated by BOWERY_INGEST_ENABLED so the route stays inert when the env var
+// isn't set.
+
+import { INGESTION_USER_AGENT } from "./userAgent.js";
 
 const FEED_URL =
   "https://aegwebprod.blob.core.windows.net/json/events/59/events.json";
 const PER_VENUE_FEED_BASE =
   "https://aegwebprod.blob.core.windows.net/json/events/";
-const USER_AGENT =
-  "Afterset-IngestionBot/1.0 (+https://afterset-pied.vercel.app/bot)";
 
 export class BoweryError extends Error {
   constructor(message: string, public status?: number) {
@@ -68,7 +69,7 @@ async function fetchUrl(url: string): Promise<BoweryFeedResponse> {
   }
   const res = await fetch(url, {
     headers: {
-      "User-Agent": USER_AGENT,
+      "User-Agent": INGESTION_USER_AGENT,
       Accept: "application/json",
     },
   });

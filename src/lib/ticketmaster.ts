@@ -14,6 +14,8 @@
 //      is not a real constraint — but the headers are surfaced so a
 //      future provider can react if that ever changes.
 
+import { INGESTION_USER_AGENT } from "./userAgent.js";
+
 export class TicketmasterDisabledError extends Error {
   constructor() {
     super("Ticketmaster ingestion disabled or unconfigured");
@@ -32,7 +34,6 @@ export class TicketmasterFetchError extends Error {
 }
 
 const BASE = "https://app.ticketmaster.com/discovery/v2/events.json";
-const USER_AGENT = "Afterset-IngestionBot/1.0 (+https://afterset.fm)";
 
 /** Discovery rejects (page * size) >= 1000. */
 export const MAX_PAGING_DEPTH = 1000;
@@ -106,7 +107,9 @@ export async function fetchEventWindow(
       `&size=${PAGE_SIZE}&page=${page}&sort=date,asc` +
       `&apikey=${key}`;
 
-    const res = await doFetch(url, { headers: { "User-Agent": USER_AGENT } });
+    const res = await doFetch(url, {
+      headers: { "User-Agent": INGESTION_USER_AGENT },
+    });
     requests++;
     if (!res.ok) {
       throw new TicketmasterFetchError(
