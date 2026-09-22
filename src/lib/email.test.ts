@@ -18,6 +18,7 @@ vi.mock("resend", () => ({
 import {
   sendVerificationEmail,
   sendPasswordResetEmail,
+  sendAccountDeleteConfirmEmail,
   __resetEmailClient,
 } from "./email.js";
 
@@ -65,7 +66,9 @@ describe("email lib", () => {
     });
 
     it("sends verification email with the configured WEB_BASE_URL in the link", async () => {
-      process.env.WEB_BASE_URL = "https://afterset.app";
+      // Deliberately not a domain we own: this case proves the override is
+      // honoured, and the default is asserted separately below.
+      process.env.WEB_BASE_URL = "https://staging.example.com";
       mockSend.mockResolvedValueOnce({ data: { id: "msg_1" }, error: null });
 
       const res = await sendVerificationEmail({
@@ -78,19 +81,50 @@ describe("email lib", () => {
       const call = mockSend.mock.calls[0]![0];
       expect(call.to).toBe("user@example.com");
       expect(call.subject).toMatch(/verify/i);
-      expect(call.text).toContain("https://afterset.app/verify-email?token=tok123");
-      expect(call.html).toContain("https://afterset.app/verify-email?token=tok123");
+      expect(call.text).toContain(
+        "https://staging.example.com/verify-email?token=tok123"
+      );
+      expect(call.html).toContain(
+        "https://staging.example.com/verify-email?token=tok123"
+      );
     });
 
-    it("uses the default WEB_BASE_URL when not set", async () => {
-      mockSend.mockResolvedValueOnce({ data: { id: "msg_2" }, error: null });
-      await sendVerificationEmail({
-        to: "user@example.com",
-        handle: "penn",
-        token: "tok456",
-      });
-      const call = mockSend.mock.calls[0]![0];
-      expect(call.text).toContain("https://afterset-pied.vercel.app/verify-email?token=tok456");
+    // The default is compiled in; WEB_BASE_URL only overrides it. Every one
+    // of these links carries a single-use token, so a default on a domain we
+    // do not own hands those tokens to a stranger on any deploy that forgets
+    // the variable. afterset.app is such a stranger — it is not ours — and
+    // afterset-pied.vercel.app is the pre-domain alias this replaced.
+    describe("the built-in default, when WEB_BASE_URL is not set", () => {
+      type SendEmail = (opts: {
+        to: string;
+        handle: string;
+        token: string;
+      }) => Promise<unknown>;
+
+      const flows: Array<[string, SendEmail, string]> = [
+        ["verification", sendVerificationEmail, "/verify-email"],
+        ["password reset", sendPasswordResetEmail, "/reset-password"],
+        ["deletion confirm", sendAccountDeleteConfirmEmail, "/confirm-delete"],
+      ];
+
+      for (const [flow, sendEmail, path] of flows) {
+        it(`${flow} links to the production domain`, async () => {
+          mockSend.mockResolvedValueOnce({ data: { id: "m" }, error: null });
+
+          await sendEmail({
+            to: "user@example.com",
+            handle: "penn",
+            token: "tok456",
+          });
+
+          const call = mockSend.mock.calls[0]![0];
+          for (const body of [call.text as string, call.html as string]) {
+            expect(body).toContain(`https://afterset.fm${path}?token=tok456`);
+            expect(body).not.toContain("afterset-pied");
+            expect(body).not.toContain("afterset.app");
+          }
+        });
+      }
     });
 
     it("uses EMAIL_FROM when set, else the resend.dev default", async () => {

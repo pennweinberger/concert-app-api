@@ -32,10 +32,16 @@ function getFromAddress(): string {
   return process.env.EMAIL_FROM ?? DEFAULT_FROM;
 }
 
+// Every deployed environment sets WEB_BASE_URL; this default is what a
+// local run, or a deployment that forgot the variable, falls back to. It
+// still has to be a domain we own — these links carry single-use tokens,
+// so a default pointing elsewhere hands them to a stranger. The previous
+// one was afterset-pied.vercel.app, the pre-domain alias.
 function getWebBaseUrl(): string {
-  return (
-    process.env.WEB_BASE_URL ?? "https://afterset-pied.vercel.app"
-  ).replace(/\/$/, "");
+  return (process.env.WEB_BASE_URL ?? "https://afterset.fm").replace(
+    /\/$/,
+    "",
+  );
 }
 
 export type EmailSendResult =
