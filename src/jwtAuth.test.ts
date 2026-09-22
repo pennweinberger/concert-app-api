@@ -287,11 +287,10 @@ describe("JWT rejection (each of these must be a 401, never a 200 or a 500)", ()
 
   it("rejects an unknown crit header extension (GHSA-hm7r-c7qw-ghp6)", async () => {
     // RFC 7515 4.1.11: a `crit` extension the recipient does not
-    // understand makes the JWS invalid. fast-jwt only started enforcing
-    // this in 6.2.0, so before that upgrade this token is accepted when
-    // it carries a valid signature. The forgery below is signed with the
-    // WRONG secret, which both versions reject; the signed-with-the-real-
-    // secret case is asserted separately so the fix is visible.
+    // understand makes the JWS invalid. fast-jwt enforces this from
+    // 6.2.0; 3.3.3 accepted such tokens. This case carries the WRONG
+    // secret, so it was rejected on both — the validly signed case below
+    // is the one that changed.
     const app = await makeApp();
     const token = forge(
       { alg: "HS256", typ: "JWT", crit: ["x-custom-policy"], "x-custom-policy": "require-mfa" },
@@ -303,10 +302,12 @@ describe("JWT rejection (each of these must be a 401, never a 200 or a 500)", ()
     await app.close();
   });
 
-  it("documents crit handling for a validly signed token", async () => {
-    // Accepted on fast-jwt < 6.2.0, rejected from 6.2.0 on. Either way it
-    // requires the signing secret, so it is not an attacker capability —
-    // this assertion exists to make the upgrade's effect explicit.
+  it("rejects an unknown crit extension even on a validly signed token", async () => {
+    // This is the assertion that flipped with fast-jwt 6.3.3: on 3.3.3
+    // this token verified (200) because unknown `crit` extensions were
+    // ignored. Minting it requires the signing secret, so it was never an
+    // attacker capability here — but a JWS this library cannot fully
+    // understand should not be treated as authentic, and now isn't.
     const app = await makeApp();
     const token = forge(
       { alg: "HS256", typ: "JWT", crit: ["x-custom-policy"], "x-custom-policy": "require-mfa" },
@@ -314,7 +315,7 @@ describe("JWT rejection (each of these must be a 401, never a 200 or a 500)", ()
       FIXTURE_SECRET,
     );
     const { status } = await get(app, "/protected", token);
-    expect(status).toBe(200);
+    expect(status).toBe(401);
     await app.close();
   });
 
