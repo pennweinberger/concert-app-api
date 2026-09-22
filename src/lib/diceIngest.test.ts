@@ -447,16 +447,18 @@ describe("runDiceIngestion — health", () => {
     { canonicalName: "Venue B", city: "Brooklyn", diceShortIds: ["bbb"] },
   ];
 
-  // Invented events that only mimic DICE's JSON-LD shapes.
-  const newFormatEvent = (i: number) => ({
-    "@type": "Event",
+  // Invented events that only mimic DICE's JSON-LD shapes. "Event" and
+  // "MusicEvent" are both understood now, so drift is simulated with a
+  // type we do not accept — which is what "Event" was before the fix.
+  const unknownTypeEvent = (i: number) => ({
+    "@type": "SomeFutureType",
     url: `https://dice.fm/event/0123456789abcdef0123456${i}`,
     name: `Invented Act ${i}`,
     startDate: "2026-10-02T22:30:00-04:00",
     location: { "@type": "Place", name: "Test Room, Brooklyn" },
   });
   const legacyEvent = (i: number) => ({
-    ...newFormatEvent(i),
+    ...unknownTypeEvent(i),
     "@type": "MusicEvent",
     url: `https://dice.fm/event/abc12${i}-invented-act-tickets`,
   });
@@ -517,7 +519,7 @@ describe("runDiceIngestion — health", () => {
    */
   it("flags parser drift when a page lists events the parser accepts none of", async () => {
     const s = makeHealthSetup({
-      pages: { aaa: page([newFormatEvent(1), newFormatEvent(2), newFormatEvent(3)]) },
+      pages: { aaa: page([unknownTypeEvent(1), unknownTypeEvent(2), unknownTypeEvent(3)]) },
     });
     const summary = await run(s, twoVenues.slice(0, 1));
 
@@ -525,7 +527,7 @@ describe("runDiceIngestion — health", () => {
     expect(summary.errors).toBe(0); // exactly why this used to be invisible
     expect(summary.jsonLdEventsSeen).toBe(3);
     expect(summary.driftPages).toEqual([
-      { diceShortId: "aaa", rawEventCount: 3, rawEventTypes: ["Event"] },
+      { diceShortId: "aaa", rawEventCount: 3, rawEventTypes: ["SomeFutureType"] },
     ]);
     expect(summary.health).toEqual({ status: "unhealthy", reasons: ["parser_drift"] });
     // Monitoring observes; it does not abort the run's normal bookkeeping.
@@ -590,5 +592,187 @@ describe("runDiceIngestion — health", () => {
     const summary = await run(s);
     expect(summary.processedDiceVenues).toBe(2);
     expect(summary.health.status).toBe("healthy");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runDiceIngestion — reconciling DICE's re-keyed event ids
+// ---------------------------------------------------------------------------
+
+describe("runDiceIngestion — reconciliation", () => {
+  const now = new Date("2026-09-21T09:00:00.000Z");
+  const NEW_ID = "6a676db7233f7b0001480746";
+  const seed: DiceSeedVenue[] = [
+    { canonicalName: "Elsewhere", city: "Brooklyn", diceShortIds: ["8p85"] },
+  ];
+
+  const currentEvent = (over: Record<string, unknown> = {}) => ({
+    "@type": "Event",
+    url: `https://dice.fm/event/${NEW_ID}`,
+    name: "Invented Act, Support",
+    startDate: "2026-10-02T22:30:00-04:00",
+    eventStatus: "https://schema.org/EventScheduled",
+    location: { "@type": "Place", name: "Elsewhere, Brooklyn" },
+    ...over,
+  });
+  const page = (events: unknown[]) =>
+    `<script type="application/ld+json">${JSON.stringify({
+      "@type": "Place",
+      name: "Elsewhere, Brooklyn",
+      address: "599 Johnson Ave, Brooklyn, NY 11237, USA",
+      event: events,
+    })}</script>`;
+  const storedPayload = (over: Record<string, unknown> = {}) => ({
+    _schema: "dice-minimal-v1",
+    url: "https://dice.fm/event/bb9k3k-invented-act-tickets",
+    name: "Invented Act, Support",
+    startDate: "2026-10-02T22:30:00-04:00",
+    eventStatus: "https://schema.org/EventScheduled",
+    locationName: "Elsewhere, Brooklyn",
+    ...over,
+  });
+
+  function makeSetup(opts: { html: string; legacyRefs?: any[]; reviews?: any[] }) {
+    const updateRef = vi.fn().mockResolvedValue({});
+    const upsertRef = vi.fn().mockResolvedValue({});
+    const upsertShow = vi.fn().mockResolvedValue({ id: "show_new" });
+    const updateReview = vi.fn().mockResolvedValue({});
+    const upsertReview = vi.fn().mockResolvedValue({});
+    const txClient = { show: { upsert: upsertShow }, showExternalRef: { upsert: upsertRef } };
+    const prisma = {
+      venue: {
+        findMany: vi.fn().mockResolvedValue([]),
+        update: vi.fn().mockResolvedValue({}),
+        upsert: vi.fn().mockResolvedValue({ id: "venue_elsewhere", name: "Elsewhere", city: "Brooklyn" }),
+      },
+      venueExternalRef: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockResolvedValue({}),
+      },
+      artist: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockResolvedValue({ id: "artist_new", name: "Invented Act" }),
+      },
+      artistExternalRef: { findUnique: vi.fn().mockResolvedValue(null), upsert: vi.fn().mockResolvedValue({}) },
+      show: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0), upsert: upsertShow },
+      showExternalRef: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue(opts.legacyRefs ?? []),
+        update: updateRef,
+        upsert: upsertRef,
+      },
+      providerMatchReview: {
+        findMany: vi.fn().mockResolvedValue(opts.reviews ?? []),
+        update: updateReview,
+        upsert: upsertReview,
+      },
+      $transaction: vi.fn().mockImplementation(async (arg: any) => arg(txClient)),
+    } as unknown as import("@prisma/client").PrismaClient;
+    return {
+      prisma,
+      mocks: { updateRef, upsertRef, upsertShow, updateReview, upsertReview },
+      run: () =>
+        runDiceIngestion({
+          prisma,
+          fetchVenuePageHtml: vi.fn().mockResolvedValue(opts.html),
+          now: () => now,
+          seed,
+          limit: 5,
+        }),
+    };
+  }
+
+  it("re-keys the matching legacy ref instead of adding a second one", async () => {
+    const s = makeSetup({
+      html: page([currentEvent()]),
+      legacyRefs: [{ id: "ref1", providerEventId: "bb9k3k", showId: "show_1", rawPayload: storedPayload() }],
+    });
+    const summary = await s.run();
+
+    expect(summary.reconciledRefs).toBe(1);
+    expect(summary.reconciled).toEqual([{ oldId: "bb9k3k", newId: NEW_ID, showId: "show_1" }]);
+    expect(summary.actions).toEqual({ AUTO_MERGE: 0, CREATE_NEW: 0, REVIEW: 0 });
+    // The existing row moved; nothing new was written.
+    expect(s.mocks.updateRef).toHaveBeenCalledOnce();
+    expect(s.mocks.upsertRef).not.toHaveBeenCalled();
+    expect(s.mocks.upsertShow).not.toHaveBeenCalled();
+    expect(summary.health.status).toBe("healthy");
+  });
+
+  /**
+   * The corruption case: DICE edited the title, so the artist guessed from
+   * it would differ and a duplicate Show would appear. Venue, date, time
+   * and room are unchanged, so it must land on the existing Show.
+   */
+  it("keeps the existing Show when only the title changed", async () => {
+    const s = makeSetup({
+      html: page([currentEvent({ name: "Completely Different Headliner" })]),
+      legacyRefs: [
+        { id: "ref1", providerEventId: "bb9k3k", showId: "show_1", rawPayload: storedPayload({ name: "Invented Act, Support" }) },
+      ],
+    });
+    const summary = await s.run();
+
+    expect(summary.reconciled[0]).toMatchObject({ showId: "show_1" });
+    expect(s.mocks.upsertShow).not.toHaveBeenCalled(); // no duplicate Show
+    expect(s.mocks.updateRef.mock.calls[0]![0].data).not.toHaveProperty("showId");
+  });
+
+  it("does not reconcile when two legacy refs match, and counts it", async () => {
+    const s = makeSetup({
+      html: page([currentEvent()]),
+      legacyRefs: [
+        { id: "ref1", providerEventId: "aaa111", showId: "show_1", rawPayload: storedPayload() },
+        { id: "ref2", providerEventId: "bbb222", showId: "show_2", rawPayload: storedPayload() },
+      ],
+    });
+    const summary = await s.run();
+
+    expect(summary.reconciledRefs).toBe(0);
+    expect(summary.reconcileAmbiguous).toBe(1);
+    expect(s.mocks.updateRef).not.toHaveBeenCalled();
+    // It still went through the normal path rather than being dropped.
+    expect(summary.actions.CREATE_NEW + summary.actions.AUTO_MERGE + summary.actions.REVIEW).toBe(1);
+  });
+
+  it("does not reconcile two events on one page that share a start time and room", async () => {
+    const s = makeSetup({
+      html: page([
+        currentEvent(),
+        currentEvent({ url: "https://dice.fm/event/89abcdef0123456789abcdef", name: "Other Act" }),
+      ]),
+      legacyRefs: [{ id: "ref1", providerEventId: "bb9k3k", showId: "show_1", rawPayload: storedPayload() }],
+    });
+    const summary = await s.run();
+
+    expect(summary.reconciledRefs).toBe(0);
+    expect(summary.reconcileAmbiguous).toBe(2);
+    expect(s.mocks.updateRef).not.toHaveBeenCalled();
+  });
+
+  it("re-keys a review row and leaves its status alone", async () => {
+    const s = makeSetup({
+      html: page([currentEvent()]),
+      legacyRefs: [],
+      reviews: [{ id: "pmr1", providerEventId: "bb9k3k", rawPayload: storedPayload() }],
+    });
+    const summary = await s.run();
+
+    expect(summary.reconciledReviews).toBe(1);
+    expect(summary.reconciled).toEqual([{ oldId: "bb9k3k", newId: NEW_ID, reviewId: "pmr1" }]);
+    expect(s.mocks.updateReview.mock.calls[0]![0].data).not.toHaveProperty("status");
+    expect(s.mocks.upsertReview).not.toHaveBeenCalled();
+  });
+
+  it("treats an event with no legacy match as new and ingests it normally", async () => {
+    const s = makeSetup({ html: page([currentEvent()]), legacyRefs: [], reviews: [] });
+    const summary = await s.run();
+
+    expect(summary.reconciledRefs).toBe(0);
+    expect(summary.reconcileAmbiguous).toBe(0);
+    expect(summary.eventsConsidered).toBe(1);
+    expect(summary.actions.CREATE_NEW).toBe(1);
+    expect(s.mocks.upsertRef).toHaveBeenCalledOnce();
   });
 });

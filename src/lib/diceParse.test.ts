@@ -4,6 +4,7 @@ import {
   parseDiceHeadliner,
   parseCityFromAddress,
   parseDiceVenuePage,
+  hasAcceptedEventType,
   startDateToLocalDateUtcMidnight,
   toDiceRawPayload,
   DICE_RAW_PAYLOAD_SCHEMA,
@@ -33,6 +34,32 @@ describe("extractDiceEventId", () => {
     ],
   ])("extracts id from %s", (url, expectedId) => {
     expect(extractDiceEventId(url)).toBe(expectedId);
+  });
+
+  /**
+   * DICE's current ids stand alone in the URL. The old terminator set
+   * ("-" or end of string) silently returned null for any of these, which
+   * would have dropped every event on the page.
+   */
+  it.each([
+    ["https://dice.fm/event/6a9c24f929ff850001191740", "6a9c24f929ff850001191740"],
+    ["https://dice.fm/event/6a9c24f929ff850001191740?lng=en-US", "6a9c24f929ff850001191740"],
+    ["https://dice.fm/event/6a9c24f929ff850001191740/", "6a9c24f929ff850001191740"],
+    ["https://dice.fm/event/6a9c24f929ff850001191740#tickets", "6a9c24f929ff850001191740"],
+    ["https://dice.fm/event/6a9c24f929ff850001191740/tickets", "6a9c24f929ff850001191740"],
+  ])("extracts a current 24-char id from %s", (url, expected) => {
+    expect(extractDiceEventId(url)).toBe(expected);
+  });
+
+  it("still extracts legacy 6-char ids in every URL shape", () => {
+    for (const [url, expected] of [
+      ["https://dice.fm/event/pyb9mp-themba-tickets", "pyb9mp"],
+      ["https://dice.fm/event/k63abp-ayybo-tickets?lng=en-US", "k63abp"],
+      ["https://dice.fm/event/avr6nq", "avr6nq"],
+      ["https://dice.fm/event/avr6nq/", "avr6nq"],
+    ] as const) {
+      expect(extractDiceEventId(url)).toBe(expected);
+    }
   });
 
   it("returns null on URLs that don't match the event pattern", () => {
@@ -138,6 +165,23 @@ describe("parseCityFromAddress", () => {
 // ---------------------------------------------------------------------------
 // parseDiceVenuePage — JSON-LD extraction
 // ---------------------------------------------------------------------------
+
+describe("hasAcceptedEventType", () => {
+  it.each([
+    ["MusicEvent", true],
+    ["Event", true],
+    [["Event", "MusicEvent"], true],
+    [["Thing", "Event"], true],
+    ["Festival", false],
+    ["Thing", false],
+    [["Thing"], false],
+    [undefined, false],
+    [null, false],
+    [42, false],
+  ])("%s -> %s", (input, expected) => {
+    expect(hasAcceptedEventType(input)).toBe(expected);
+  });
+});
 
 describe("parseDiceVenuePage", () => {
   it("extracts the Place JSON-LD and its events", () => {
@@ -301,16 +345,19 @@ describe("parseDiceVenuePage", () => {
     expect(parsed!.events[0]!.providerEventId).toBe("valid");
   });
 
-  it("ignores non-MusicEvent entries in the event array", () => {
+  it("ignores entries whose @type is not an accepted event type", () => {
+    // "Event" used to be rejected here. It is DICE's current type and is
+    // now accepted; only genuinely unsupported types are skipped.
     const html = `<script type="application/ld+json">${JSON.stringify({
       "@type": "Place",
       name: "X",
       event: [
+        { "@type": "Place", url: "https://dice.fm/event/abc-tickets", startDate: "2026-06-20T22:30:00-04:00" },
         { "@type": "Event", url: "https://dice.fm/event/abc-tickets", startDate: "2026-06-20T22:30:00-04:00" },
       ],
     })}</script>`;
     const parsed = parseDiceVenuePage(html);
-    expect(parsed!.events.length).toBe(0);
+    expect(parsed!.events.map((e) => e.providerEventId)).toEqual(["abc"]);
   });
 });
 
@@ -402,5 +449,77 @@ describe("toDiceRawPayload", () => {
     } as unknown as typeof event);
     expect(payload).not.toHaveProperty("description");
     expect(payload).not.toHaveProperty("imageUrls");
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Current DICE markup (the September 2026 change)
+// ---------------------------------------------------------------------------
+
+describe("parseDiceVenuePage — current markup", () => {
+  // Shapes only; names and ids are invented.
+  const currentPage = `<script type="application/ld+json">${JSON.stringify({
+    "@type": "Place",
+    name: "Test Room, Brooklyn",
+    address: "1 Test St, Brooklyn, NY 11211, USA",
+    event: [
+      {
+        "@type": "Event",
+        url: "https://dice.fm/event/0123456789abcdef01234567",
+        name: "Invented Act, Support Act",
+        startDate: "2026-10-02T22:30:00-04:00",
+        endDate: "2026-10-03T04:00:00-04:00",
+        eventStatus: "https://schema.org/EventScheduled",
+        location: { "@type": "Place", name: "Test Room, Brooklyn", address: "1 Test St" },
+        image: ["https://dice-media.imgix.net/x.jpg"],
+        description: "promoter prose",
+        offers: [{ "@type": "Offer", price: "20.00", priceCurrency: "USD" }],
+      },
+      {
+        "@type": ["Event", "MusicEvent"],
+        url: "https://dice.fm/event/89abcdef0123456789abcdef?lng=en-US",
+        name: "Second Act",
+        startDate: "2026-10-03T20:00:00-04:00",
+        location: { "@type": "Place", name: "Test Room, Rooftop" },
+      },
+    ],
+  })}</script>`;
+
+  it("accepts Event and array-typed events, with their current ids", () => {
+    const parsed = parseDiceVenuePage(currentPage)!;
+    expect(parsed.events.map((e) => e.providerEventId)).toEqual([
+      "0123456789abcdef01234567",
+      "89abcdef0123456789abcdef",
+    ]);
+    expect(parsed.events[0]!.startDate).toBe("2026-10-02T22:30:00-04:00");
+    expect(parsed.events[0]!.locationName).toBe("Test Room, Brooklyn");
+    expect(parsed.events[1]!.locationName).toBe("Test Room, Rooftop");
+  });
+
+  /** The markup fix must not widen what we take from the page. */
+  it("still ignores description, images, offers/prices and end dates", () => {
+    const parsed = parseDiceVenuePage(currentPage)!;
+    for (const event of parsed.events) {
+      expect(Object.keys(event).sort()).toEqual(
+        ["eventStatus", "locationName", "name", "providerEventId", "startDate", "url"].sort(),
+      );
+    }
+    const serialized = JSON.stringify(parsed.events);
+    expect(serialized).not.toContain("promoter prose");
+    expect(serialized).not.toContain("imgix");
+    expect(serialized).not.toContain("20.00");
+    expect(serialized).not.toContain("2026-10-03T04:00:00");
+  });
+
+  it("skips entries that are neither Event nor MusicEvent", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({
+      "@type": "Place",
+      name: "Test Room",
+      event: [
+        { "@type": "Festival", url: "https://dice.fm/event/aaaaaaaaaaaaaaaaaaaaaaaa", name: "x", startDate: "2026-10-02T22:30:00-04:00" },
+      ],
+    })}</script>`;
+    expect(parseDiceVenuePage(html)!.events).toEqual([]);
   });
 });

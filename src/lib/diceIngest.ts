@@ -30,6 +30,11 @@ import {
   type DiceMusicEvent,
 } from "./diceParse.js";
 import {
+  reconcileDiceEvent,
+  duplicateReconcileKeys,
+  diceReconcileKey,
+} from "./diceReconcile.js";
+import {
   inspectDiceVenuePage,
   evaluateDiceRunHealth,
   type DiceDriftPage,
@@ -93,6 +98,19 @@ export type DiceRunSummary = {
   activeVenuesWithZeroEvents: string[];
   /** Verdict on the run. The route turns "unhealthy" into a failure. */
   health: DiceRunHealth;
+  /** Legacy refs moved onto DICE's current event ids. */
+  reconciledRefs: number;
+  /** Legacy review rows moved onto DICE's current event ids. */
+  reconciledReviews: number;
+  /** Events that matched more than one legacy row, so were left alone. */
+  reconcileAmbiguous: number;
+  /** Audit trail of every re-key: Afterset ids only. */
+  reconciled: Array<{
+    oldId: string;
+    newId: string;
+    showId?: string;
+    reviewId?: string;
+  }>;
 };
 
 // ---------------------------------------------------------------------------
@@ -119,6 +137,10 @@ export async function runDiceIngestion(
     driftPages: [],
     activeVenuesWithZeroEvents: [],
     health: { status: "healthy", reasons: [] },
+    reconciledRefs: 0,
+    reconciledReviews: 0,
+    reconcileAmbiguous: 0,
+    reconciled: [],
   };
 
   // Load lastDiceFetchAt for each canonical venue (by name+city) so we
@@ -214,10 +236,14 @@ export async function runDiceIngestion(
         continue;
       }
 
+      // Two events on one page sharing (start instant, room) cannot be
+      // told apart, so neither may claim a legacy row.
+      const duplicateKeys = duplicateReconcileKeys(parsed.events);
+
       for (const event of parsed.events) {
         summary.eventsConsidered++;
         try {
-          const decision = await processDiceEvent(
+          const outcome = await processDiceEvent(
             {
               event,
               diceShortId,
@@ -226,14 +252,28 @@ export async function runDiceIngestion(
               fallbackCityFromAddress: parsed.venueAddress
                 ? parseCityFromAddress(parsed.venueAddress)
                 : null,
+              duplicateOnPage: duplicateKeys.has(diceReconcileKey(event)),
             },
             deps,
           );
-          summary.actions[decision.action]++;
-          // Track canonical Venue id from a successful resolveVenue
-          // so we can update lastDiceFetchAt below. Any non-REVIEW
-          // decision implies the venue was resolved.
-          if (decision.venueId) canonicalVenueId = decision.venueId;
+          if (outcome.kind === "reconciled") {
+            if (outcome.via === "ref") summary.reconciledRefs++;
+            else summary.reconciledReviews++;
+            summary.reconciled.push({
+              oldId: outcome.oldId,
+              newId: outcome.newId,
+              ...(outcome.showId ? { showId: outcome.showId } : {}),
+              ...(outcome.reviewId ? { reviewId: outcome.reviewId } : {}),
+            });
+            canonicalVenueId = outcome.venueId;
+          } else {
+            if (outcome.reconcileAmbiguous) summary.reconcileAmbiguous++;
+            summary.actions[outcome.decision.action]++;
+            // Track canonical Venue id from a successful resolveVenue
+            // so we can update lastDiceFetchAt below. Any non-REVIEW
+            // decision implies the venue was resolved.
+            if (outcome.decision.venueId) canonicalVenueId = outcome.decision.venueId;
+          }
         } catch (e) {
           summary.errors++;
           console.error(
@@ -309,20 +349,34 @@ export async function runDiceIngestion(
 type ProcessInput = {
   event: DiceMusicEvent;
   diceShortId: string;
+  /** Another event on the same page shares this one's reconcile key. */
+  duplicateOnPage?: boolean;
   canonicalVenueName: string;
   canonicalCity: string;
   fallbackCityFromAddress: string | null;
 };
 
+/**
+ * Either the event was reconciled onto an existing legacy row (and is
+ * therefore already linked), or it went through normal matching.
+ */
+type DiceEventOutcome =
+  | {
+      kind: "reconciled";
+      via: "ref" | "review";
+      oldId: string;
+      newId: string;
+      showId?: string;
+      reviewId?: string;
+      venueId: string;
+    }
+  | { kind: "decision"; decision: MatchDecision; reconcileAmbiguous: boolean };
+
 async function processDiceEvent(
   input: ProcessInput,
   deps: DiceIngestDeps,
-): Promise<MatchDecision> {
+): Promise<DiceEventOutcome> {
   const { event, diceShortId, canonicalVenueName, canonicalCity } = input;
-
-  // Headliner from the heuristic. Misfires fall through to fuzzy
-  // matching downstream which routes to ProviderMatchReview.
-  const headlinerName = parseDiceHeadliner(event.name);
 
   // Local date is the calendar-day-in-venue-timezone, stored as a
   // UTC-midnight Date (matches the existing Show.localDate convention).
@@ -332,6 +386,62 @@ async function processDiceEvent(
       `dice ingest: invalid startDate "${event.startDate}" for event ${event.providerEventId}`,
     );
   }
+
+  // ── Venue resolution (upsert + sibling-room collapse via diceId) ─
+  // We always know the canonical (name, city) AND the DICE short id,
+  // so the upsert variant gives us the canonical Venue row in one
+  // call. No confidence ambiguity to model.
+  const canonicalVenueRow = await upsertVenue(
+    {
+      name: canonicalVenueName,
+      city: canonicalCity,
+      diceId: diceShortId,
+    },
+    { prisma: deps.prisma },
+  );
+
+  // ── Reconciliation ───────────────────────────────────────────────
+  // Before any artist matching: if this event already exists under a
+  // legacy DICE id, move that row onto the current id. Deliberately
+  // ahead of the heuristic, so an edited title cannot invent a new
+  // artist and duplicate the Show.
+  const reconciled = await reconcileDiceEvent(
+    {
+      event,
+      canonicalVenueId: canonicalVenueRow.id,
+      localDate,
+      duplicateOnPage: input.duplicateOnPage ?? false,
+    },
+    deps,
+  );
+  if (reconciled.kind === "rekeyed_ref") {
+    return {
+      kind: "reconciled",
+      via: "ref",
+      oldId: reconciled.oldId,
+      newId: reconciled.newId,
+      showId: reconciled.showId,
+      venueId: canonicalVenueRow.id,
+    };
+  }
+  if (reconciled.kind === "rekeyed_review") {
+    return {
+      kind: "reconciled",
+      via: "review",
+      oldId: reconciled.oldId,
+      newId: reconciled.newId,
+      reviewId: reconciled.reviewId,
+      venueId: canonicalVenueRow.id,
+    };
+  }
+  // Ambiguous, missing or not applicable: fall through to the normal
+  // matching and review path, counted so it stays visible.
+  const reconcileAmbiguous = reconciled.kind === "ambiguous";
+
+  // Headliner from the heuristic. Misfires fall through to fuzzy
+  // matching downstream which routes to ProviderMatchReview. Computed
+  // only now: a reconciled event never consults the title at all.
+  const headlinerName = parseDiceHeadliner(event.name);
 
   // ── Artist resolution (matching-confidence variant) ──────────────
   // Load name-based candidates so providerMatch.resolveArtist can
@@ -351,19 +461,6 @@ async function processDiceEvent(
       name: a.name,
       mbid: a.mbid,
     })),
-  );
-
-  // ── Venue resolution (upsert + sibling-room collapse via diceId) ─
-  // We always know the canonical (name, city) AND the DICE short id,
-  // so the upsert variant gives us the canonical Venue row in one
-  // call. No confidence ambiguity to model.
-  const canonicalVenueRow = await upsertVenue(
-    {
-      name: canonicalVenueName,
-      city: canonicalCity,
-      diceId: diceShortId,
-    },
-    { prisma: deps.prisma },
   );
 
   // For the matching layer's resolveVenue (confidence-based), we
@@ -444,7 +541,7 @@ async function processDiceEvent(
     },
     deps,
   );
-  return decision;
+  return { kind: "decision", decision, reconcileAmbiguous };
 }
 
 // ---------------------------------------------------------------------------

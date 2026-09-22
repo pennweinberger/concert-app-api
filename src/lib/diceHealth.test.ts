@@ -69,13 +69,27 @@ describe("inspectDiceVenuePage", () => {
   });
 
   /**
-   * Documents the real break against the untouched parser: the page lists
-   * events the parser silently drops. This is exactly the gap the health
-   * check has to expose.
+   * Since the parser understands DICE's current markup, the observer and
+   * the parser must agree on it. If they did not, every run would now
+   * report drift that is not there.
    */
-  it("sees events on a new-format page that the current parser rejects", () => {
+  it("agrees with the parser on a current-markup page (no false drift)", () => {
     const html = page([newFormatEvent(1), newFormatEvent(2), newFormatEvent(3)]);
     expect(inspectDiceVenuePage(html).rawEventCount).toBe(3);
+    expect(parseDiceVenuePage(html)!.events.length).toBe(3);
+  });
+
+  /**
+   * Drift is about a FUTURE change we do not yet understand: the page
+   * lists events and the parser takes none. Simulated with a type we do
+   * not accept, which is what "Event" looked like before the fix.
+   */
+  it("still detects a page whose events the parser cannot accept", () => {
+    const html = page([
+      { ...newFormatEvent(1), "@type": "SomeFutureType" },
+      { ...newFormatEvent(2), "@type": "SomeFutureType" },
+    ]);
+    expect(inspectDiceVenuePage(html).rawEventCount).toBe(2);
     expect(parseDiceVenuePage(html)!.events.length).toBe(0);
   });
 

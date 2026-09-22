@@ -1,11 +1,12 @@
 // Pure parsers for DICE event data. No I/O.
 //
 // DICE venue pages emit a `Place` JSON-LD block whose `event[]` array
-// contains a `MusicEvent` object per upcoming event. That single block
-// is the entire ingestion payload — per-event pages don't expose their
-// own MusicEvent JSON-LD, so we don't fetch them.
+// contains one object per upcoming event — typed "MusicEvent" until
+// August 2026, "Event" since. That single block is the entire ingestion
+// payload — per-event pages don't expose their own JSON-LD, so we don't
+// fetch them.
 //
-// Per-MusicEvent we extract only: providerEventId (from URL), url, name,
+// Per event we extract only: providerEventId (from URL), url, name,
 // startDate (ISO with TZ offset), eventStatus and the location's name.
 // Descriptions, images, end dates and addresses are left on the page.
 // Performer is NOT in JSON-LD — it's encoded in the human-readable
@@ -17,12 +18,19 @@
 // providerEventId extraction
 // ---------------------------------------------------------------------------
 
-// DICE event URLs look like:
-//   https://dice.fm/event/pyb9mp-themba-th4ys-…-tickets
-// The first segment after /event/ is the provider event id.
+// DICE event URLs come in two shapes:
+//   legacy: https://dice.fm/event/pyb9mp-themba-th4ys-…-tickets
+//   current: https://dice.fm/event/6a9c24f929ff850001191740
+// The first segment after /event/ is the provider event id either way.
+//
+// The terminator set matters. It used to be "-" or end-of-string, which
+// worked only because a slug always followed the legacy id. The current
+// ids stand alone, so a trailing slash, query string or fragment — all of
+// which DICE has used — would have yielded null and silently dropped the
+// event.
 export function extractDiceEventId(url: string): string | null {
   if (typeof url !== "string") return null;
-  const m = /\/event\/([a-z0-9]+)(?:-|$)/i.exec(url);
+  const m = /\/event\/([a-z0-9]+)(?:[-/?#]|$)/i.exec(url);
   return m && m[1] ? m[1] : null;
 }
 
@@ -138,6 +146,22 @@ export function parseCityFromAddress(address: string): string | null {
 const JSON_LD_RE =
   /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 
+// DICE listed events as "MusicEvent" until August 2026 and as "Event"
+// since. Accepting only the former is what silently broke ingestion for a
+// month: the pages still parsed, the events were simply all skipped. Both
+// are accepted now, including the array form schema.org permits.
+const ACCEPTED_EVENT_TYPES = new Set(["MusicEvent", "Event"]);
+
+export function hasAcceptedEventType(rawType: unknown): boolean {
+  if (typeof rawType === "string") return ACCEPTED_EVENT_TYPES.has(rawType);
+  if (Array.isArray(rawType)) {
+    return rawType.some(
+      (t) => typeof t === "string" && ACCEPTED_EVENT_TYPES.has(t),
+    );
+  }
+  return false;
+}
+
 // Only the fields Afterset needs for matching, deduplication and running
 // the catalog. DICE's pages also carry a description, images, an end date
 // and a street address. Those are deliberately NOT extracted: data that is
@@ -234,7 +258,7 @@ export function parseDiceVenuePage(html: string): ParsedDiceVenuePage | null {
   for (const e of rawEvents) {
     if (typeof e !== "object" || e === null) continue;
     const ev = e as Record<string, unknown>;
-    if (ev["@type"] !== "MusicEvent") continue;
+    if (!hasAcceptedEventType(ev["@type"])) continue;
     const url = typeof ev["url"] === "string" ? ev["url"] : "";
     const providerEventId = extractDiceEventId(url);
     if (!providerEventId) continue;
