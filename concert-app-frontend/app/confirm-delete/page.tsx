@@ -62,28 +62,19 @@ function ConfirmDeleteInner() {
   }
 
   return (
-    <div style={{ maxWidth: "420px", margin: "60px auto 0" }}>
-      <h1
-        style={{
-          fontSize: "30px",
-          marginBottom: "16px",
-          fontFamily: "var(--font-display), sans-serif",
-          fontWeight: 700,
-          letterSpacing: "-0.02em",
-        }}
-      >
+    <div
+      className="container-xs"
+      style={{ paddingTop: "clamp(40px,8vw,96px)", paddingBottom: "80px" }}
+    >
+      <h1 className="h1" style={{ marginBottom: "20px" }}>
         Confirm account deletion
       </h1>
 
       {missingToken && (
         <div
-          style={{
-            background: "#1f1f1f",
-            padding: "12px",
-            borderRadius: "12px",
-            marginBottom: "16px",
-            color: "#ff8080",
-          }}
+          className="notice notice-error"
+          role="alert"
+          style={{ marginBottom: "16px" }}
         >
           No confirmation token in the link. Use the link from your email.
         </div>
@@ -91,7 +82,14 @@ function ConfirmDeleteInner() {
 
       {!missingToken && status.kind === "ready" && (
         <>
-          <p style={{ color: "#aaa", marginBottom: "20px" }}>
+          <p
+            style={{
+            color: "var(--ink-2)",
+            margin: "0 0 24px",
+            fontSize: "16px",
+            lineHeight: 1.55,
+          }}
+          >
             After you confirm, your account will be scheduled for deletion
             in 30 days. You can sign in during that time and cancel if
             you change your mind. Your reviews will remain on Afterset as
@@ -99,30 +97,13 @@ function ConfirmDeleteInner() {
           </p>
           <button
             onClick={confirm}
-            style={{
-              width: "100%",
-              padding: "14px",
-              borderRadius: "12px",
-              border: "none",
-              background: "#ff8080",
-              color: "#0a0a0a",
-              cursor: "pointer",
-              fontWeight: "bold",
-              marginBottom: "12px",
-            }}
+            className="btn btn-danger btn-lg btn-block"
+            style={{ marginBottom: "12px" }}
           >
             Confirm deletion
           </button>
-          <div style={{ textAlign: "center", marginTop: "8px" }}>
-            <Link
-              href="/"
-              style={{
-                color: "#f4f1ea",
-                fontSize: "14px",
-                textDecoration: "underline",
-                textUnderlineOffset: "3px",
-              }}
-            >
+          <div style={{ textAlign: "center", marginTop: "12px" }}>
+            <Link href="/" className="link" style={{ fontSize: "15px" }}>
               Never mind — go home
             </Link>
           </div>
@@ -130,19 +111,17 @@ function ConfirmDeleteInner() {
       )}
 
       {status.kind === "submitting" && (
-        <div style={{ color: "#aaa" }}>Confirming…</div>
+        <div className="meta" role="status">
+          Confirming…
+        </div>
       )}
 
       {status.kind === "ok" && (
         <>
           <div
-            style={{
-              background: "#1f1f1f",
-              padding: "12px",
-              borderRadius: "12px",
-              marginBottom: "16px",
-              color: "#9be597",
-            }}
+            className="notice notice-success"
+            role="status"
+            style={{ marginBottom: "16px" }}
           >
             Account deletion confirmed.
             {status.scheduledFor
@@ -150,15 +129,7 @@ function ConfirmDeleteInner() {
               : ""}{" "}
             You can sign in during the grace period to cancel.
           </div>
-          <Link
-            href="/"
-            style={{
-              color: "#f4f1ea",
-              fontSize: "14px",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
-          >
+          <Link href="/" className="link" style={{ fontSize: "15px" }}>
             ← Back to feed
           </Link>
         </>
@@ -167,25 +138,13 @@ function ConfirmDeleteInner() {
       {status.kind === "error" && (
         <>
           <div
-            style={{
-              background: "#1f1f1f",
-              padding: "12px",
-              borderRadius: "12px",
-              marginBottom: "16px",
-              color: "#ff8080",
-            }}
+            className="notice notice-error"
+            role="alert"
+            style={{ marginBottom: "16px" }}
           >
             {status.message}
           </div>
-          <Link
-            href="/"
-            style={{
-              color: "#f4f1ea",
-              fontSize: "14px",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
-          >
+          <Link href="/" className="link" style={{ fontSize: "15px" }}>
             ← Back to feed
           </Link>
         </>
@@ -196,15 +155,17 @@ function ConfirmDeleteInner() {
 
 export default function ConfirmDeletePage() {
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: "#f4f1ea",
-        padding: "24px",
-      }}
-    >
-      <Suspense fallback={<div style={{ color: "#aaa" }}>Loading…</div>}>
+    <main className="page">
+      <Suspense
+        fallback={
+          <div
+            className="container-xs meta"
+            style={{ paddingTop: "clamp(40px,8vw,96px)" }}
+          >
+            Loading…
+          </div>
+        }
+      >
         <ConfirmDeleteInner />
       </Suspense>
     </main>

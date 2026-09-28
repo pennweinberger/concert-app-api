@@ -96,31 +96,21 @@ function SignUpForm() {
   }
 
   return (
-    <div style={{ maxWidth: "420px", margin: "60px auto 0" }}>
-      <h1
-        style={{
-          fontSize: "30px",
-          marginBottom: "24px",
-          fontFamily: "var(--font-display), sans-serif",
-          fontWeight: 700,
-          letterSpacing: "-0.02em",
-        }}
-      >
+    <div
+      className="container-xs"
+      style={{ paddingTop: "clamp(40px,8vw,96px)", paddingBottom: "80px" }}
+    >
+      <h1 className="h1" style={{ marginBottom: "32px" }}>
         Sign up
       </h1>
 
-      <div style={{ marginBottom: "14px" }}>
-        <label
-          style={{
-            display: "block",
-            color: "#aaa",
-            marginBottom: "6px",
-            fontSize: "14px",
-          }}
-        >
+      <div className="field" style={{ marginBottom: "18px" }}>
+        <label className="label" htmlFor="signup-handle">
           Pick a handle
         </label>
         <input
+          id="signup-handle"
+          className="input"
           value={handle}
           onChange={(e) => setHandle(e.target.value)}
           onKeyDown={(e) => {
@@ -128,33 +118,17 @@ function SignUpForm() {
           }}
           placeholder="your_handle"
           autoComplete="username"
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: "12px",
-            border: "1px solid #333",
-            background: "#1a1a1a",
-            color: "white",
-            boxSizing: "border-box",
-          }}
         />
-        <div style={{ color: "#777", fontSize: "12px", marginTop: "6px" }}>
-          3-20 chars: letters, numbers, underscore.
-        </div>
+        <div className="hint">3-20 chars: letters, numbers, underscore.</div>
       </div>
 
-      <div style={{ marginBottom: "14px" }}>
-        <label
-          style={{
-            display: "block",
-            color: "#aaa",
-            marginBottom: "6px",
-            fontSize: "14px",
-          }}
-        >
+      <div className="field" style={{ marginBottom: "18px" }}>
+        <label className="label" htmlFor="signup-email">
           Email
         </label>
         <input
+          id="signup-email"
+          className="input"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -163,33 +137,19 @@ function SignUpForm() {
           }}
           placeholder="you@example.com"
           autoComplete="email"
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: "12px",
-            border: "1px solid #333",
-            background: "#1a1a1a",
-            color: "white",
-            boxSizing: "border-box",
-          }}
         />
-        <div style={{ color: "#777", fontSize: "12px", marginTop: "6px" }}>
+        <div className="hint">
           We send a verification link. Used for password reset later.
         </div>
       </div>
 
-      <div style={{ marginBottom: "20px" }}>
-        <label
-          style={{
-            display: "block",
-            color: "#aaa",
-            marginBottom: "6px",
-            fontSize: "14px",
-          }}
-        >
+      <div className="field" style={{ marginBottom: "24px" }}>
+        <label className="label" htmlFor="signup-password">
           Password
         </label>
         <input
+          id="signup-password"
+          className="input"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -197,30 +157,15 @@ function SignUpForm() {
             if (e.key === "Enter") submit();
           }}
           autoComplete="new-password"
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: "12px",
-            border: "1px solid #333",
-            background: "#1a1a1a",
-            color: "white",
-            boxSizing: "border-box",
-          }}
         />
-        <div style={{ color: "#777", fontSize: "12px", marginTop: "6px" }}>
-          At least 8 characters.
-        </div>
+        <div className="hint">At least 8 characters.</div>
       </div>
 
       {error && (
         <div
-          style={{
-            background: "#1f1f1f",
-            padding: "12px",
-            borderRadius: "12px",
-            marginBottom: "16px",
-            color: "#ff8080",
-          }}
+          className="notice notice-error"
+          role="alert"
+          style={{ marginBottom: "16px" }}
         >
           {error}
         </div>
@@ -230,45 +175,23 @@ function SignUpForm() {
       <button
         onClick={submit}
         disabled={submitting}
-        style={{
-          width: "100%",
-          padding: "14px",
-          borderRadius: "12px",
-          border: "none",
-          background: submitting ? "#555" : "#f4f1ea",
-          color: submitting ? "#aaa" : "#0a0a0a",
-          cursor: submitting ? "not-allowed" : "pointer",
-          fontWeight: "bold",
-          marginBottom: "20px",
-        }}
+        className="btn btn-primary btn-lg btn-block"
+        style={{ marginBottom: "24px" }}
       >
         {submitting ? "Creating account…" : "Create account"}
       </button>
 
-      <div style={{ color: "#aaa", fontSize: "14px", textAlign: "center" }}>
+      <div
+        style={{ color: "var(--muted)", fontSize: "15px", textAlign: "center" }}
+      >
         Already have an account?{" "}
-        <Link
-          href={`/signin?next=${encodeURIComponent(next)}`}
-          style={{
-            color: "#f4f1ea",
-            textDecoration: "underline",
-            textUnderlineOffset: "3px",
-          }}
-        >
+        <Link href={`/signin?next=${encodeURIComponent(next)}`} className="link">
           Sign in
         </Link>
       </div>
 
       <div style={{ marginTop: "20px", textAlign: "center" }}>
-        <Link
-          href="/"
-          style={{
-            color: "#f4f1ea",
-            fontSize: "14px",
-            textDecoration: "underline",
-            textUnderlineOffset: "3px",
-          }}
-        >
+        <Link href="/" className="link" style={{ fontSize: "15px" }}>
           ← Back to feed
         </Link>
       </div>
@@ -278,15 +201,17 @@ function SignUpForm() {
 
 export default function SignUpPage() {
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: "#f4f1ea",
-        padding: "24px",
-      }}
-    >
-      <Suspense fallback={<div style={{ color: "#aaa" }}>Loading…</div>}>
+    <main className="page">
+      <Suspense
+        fallback={
+          <div
+            className="container-xs meta"
+            style={{ paddingTop: "clamp(40px,8vw,96px)" }}
+          >
+            Loading…
+          </div>
+        }
+      >
         <SignUpForm />
       </Suspense>
     </main>

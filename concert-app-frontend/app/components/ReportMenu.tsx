@@ -20,7 +20,7 @@ const REASONS: { value: string; label: string }[] = [
 ];
 
 /**
- * Discreet three-dot (⋯) menu with a single "Report" action, opening a
+ * Discreet three-dot ("more") menu with a single "Report" action, opening a
  * small reason picker. Used on reviews, comments, and profiles. Kept
  * intentionally low-key — not a prominent button.
  */
@@ -107,7 +107,30 @@ export default function ReportMenu({
 
   if (done) {
     return (
-      <span style={{ color: "#7dff9b", fontSize: "12px" }}>Reported ✓</span>
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "4px",
+          color: "var(--success)",
+          fontSize: "13px",
+        }}
+      >
+        Reported
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M5 12.5l4.5 4.5L19 7.5" />
+        </svg>
+      </span>
     );
   }
 
@@ -116,45 +139,38 @@ export default function ReportMenu({
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="More options"
-        style={{
-          background: "none",
-          border: "none",
-          color: "#777",
-          cursor: "pointer",
-          fontSize: "18px",
-          lineHeight: 1,
-          padding: "2px 6px",
-        }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="icon-btn"
+        style={{ width: "36px", height: "36px", color: "var(--muted)" }}
       >
-        ⋯
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="5" cy="12" r="1" />
+          <circle cx="12" cy="12" r="1" />
+          <circle cx="19" cy="12" r="1" />
+        </svg>
       </button>
 
       {open && !modal && (
         <div
-          style={{
-            position: "absolute",
-            right: 0,
-            top: "24px",
-            background: "#1a1a1a",
-            border: "1px solid #333",
-            borderRadius: "8px",
-            zIndex: 20,
-            minWidth: "120px",
-          }}
+          className="menu"
+          role="menu"
+          style={{ right: 0, top: "40px", minWidth: "160px" }}
         >
           <button
+            role="menuitem"
             onClick={() => setModal(true)}
-            style={{
-              display: "block",
-              width: "100%",
-              textAlign: "left",
-              background: "none",
-              border: "none",
-              color: "#f4f1ea",
-              cursor: "pointer",
-              padding: "10px 14px",
-              fontSize: "14px",
-            }}
+            className="menu-item"
           >
             Report
           </button>
@@ -166,8 +182,8 @@ export default function ReportMenu({
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            zIndex: 50,
+            background: "rgba(0,0,0,0.4)",
+            zIndex: 100,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -176,25 +192,37 @@ export default function ReportMenu({
           onClick={() => setModal(false)}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`report-title-${targetId}`}
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: "#141414",
-              border: "1px solid #333",
-              borderRadius: "14px",
-              padding: "20px",
+              background: "var(--bg)",
+              borderRadius: "var(--radius-xl)",
+              boxShadow: "var(--shadow-lg)",
+              padding: "28px",
               width: "100%",
-              maxWidth: "400px",
-              color: "#f4f1ea",
+              maxWidth: "420px",
+              boxSizing: "border-box",
+              color: "var(--ink)",
+              textAlign: "left",
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: "17px", marginBottom: "14px" }}>
+            <h2 id={`report-title-${targetId}`} className="h3" style={{ marginBottom: "18px" }}>
               Report {targetType.toLowerCase()}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            </h2>
+            <div className="field" role="radiogroup" aria-label="Reason">
               {reasons.map((r) => (
                 <label
                   key={r.value}
-                  style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    minHeight: "32px",
+                    fontSize: "15.5px",
+                    cursor: "pointer",
+                  }}
                 >
                   <input
                     type="radio"
@@ -202,6 +230,7 @@ export default function ReportMenu({
                     value={r.value}
                     checked={reason === r.value}
                     onChange={() => setReason(r.value)}
+                    style={{ width: "18px", height: "18px", margin: 0, accentColor: "var(--ink)" }}
                   />
                   {r.label}
                 </label>
@@ -209,58 +238,33 @@ export default function ReportMenu({
             </div>
 
             {reason === "OTHER" && (
-              <textarea
-                value={details}
-                onChange={(e) => setDetails(e.target.value)}
-                placeholder="Add details (optional)"
-                rows={3}
-                style={{
-                  width: "100%",
-                  marginTop: "12px",
-                  padding: "10px",
-                  borderRadius: "8px",
-                  background: "#1a1a1a",
-                  color: "#f4f1ea",
-                  border: "1px solid #333",
-                  resize: "vertical",
-                  fontFamily: "inherit",
-                  boxSizing: "border-box",
-                }}
-              />
+              <div className="field" style={{ marginTop: "14px" }}>
+                <textarea
+                  value={details}
+                  onChange={(e) => setDetails(e.target.value)}
+                  placeholder="Add details (optional)"
+                  aria-label="Details"
+                  rows={3}
+                  className="input"
+                  style={{ minHeight: "96px" }}
+                />
+              </div>
             )}
 
             {error && (
-              <div style={{ color: "#ff8080", marginTop: "10px", fontSize: "13px" }}>
+              <div className="notice notice-error" style={{ marginTop: "14px" }}>
                 {error}
               </div>
             )}
 
-            <div style={{ display: "flex", gap: "10px", marginTop: "16px", justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setModal(false)}
-                style={{
-                  background: "none",
-                  border: "1px solid #333",
-                  color: "#aaa",
-                  borderRadius: "8px",
-                  padding: "8px 14px",
-                  cursor: "pointer",
-                }}
-              >
+            <div style={{ display: "flex", gap: "10px", marginTop: "24px", justifyContent: "flex-end" }}>
+              <button onClick={() => setModal(false)} className="btn btn-secondary">
                 Cancel
               </button>
               <button
                 onClick={submit}
                 disabled={!reason || submitting}
-                style={{
-                  background: !reason || submitting ? "#555" : "#f4f1ea",
-                  color: !reason || submitting ? "#aaa" : "#0a0a0a",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "8px 14px",
-                  fontWeight: "bold",
-                  cursor: !reason || submitting ? "not-allowed" : "pointer",
-                }}
+                className="btn btn-primary"
               >
                 {submitting ? "Submitting…" : "Submit"}
               </button>

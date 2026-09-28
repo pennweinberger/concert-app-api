@@ -4,14 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { authHeaders } from "../../lib/auth";
-import Masthead from "../../components/Masthead";
 import StarRating from "../../components/StarRating";
 import CommentsSection from "../../components/CommentsSection";
 import ReviewItem, {
   type ReviewItemData,
 } from "../../components/ReviewItem";
 import LoadMore from "../../components/LoadMore";
-import PageGlow from "../../components/PageGlow";
 import ReviewSurface from "../../components/ReviewSurface";
 import SegmentedTabs from "../../components/SegmentedTabs";
 
@@ -39,7 +37,6 @@ type Artist = {
 
 type SortMode = "top" | "recent";
 
-const CREAM = "#f4f1ea";
 const PAGE_SIZE = 20;
 
 /**
@@ -188,141 +185,169 @@ export default function ArtistPage() {
   }
 
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: CREAM,
-        padding: "24px",
-      }}
-    >
-      <PageGlow />
-
-      <div
-        style={{
-          maxWidth: "700px",
-          margin: "0 auto",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        <Masthead />
-
-        <div style={{ marginTop: "24px" }}>
-          <Link
-            href="/"
-            style={{
-              color: "#6f6f6f",
-              fontSize: "13px",
-              textDecoration: "none",
-            }}
+    <main className="page">
+      <div className="container-md" style={{ paddingTop: "20px" }}>
+        <Link
+          href="/"
+          className="link"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "2px",
+            minHeight: "40px",
+            fontSize: "15px",
+          }}
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
           >
-            ← Back
-          </Link>
-        </div>
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
+          Back
+        </Link>
 
         {loading && !artist && (
-          <div style={{ color: "#888", fontSize: "14px", padding: "20px 0" }}>
-            Loading…
+          <div aria-busy="true" style={{ padding: "24px 0 48px" }}>
+            <span className="sr-only">Loading…</span>
+            <div className="skeleton" style={{ width: "55%", height: "56px" }} />
+            <div className="skeleton" style={{ width: "35%", height: "20px", marginTop: "16px" }} />
           </div>
         )}
 
         {!loading && error && (
-          <div
-            style={{ color: "#ff8080", fontSize: "14px", padding: "20px 0" }}
-          >
+          <div className="notice notice-error" style={{ margin: "16px 0 48px" }}>
             {error}
           </div>
         )}
 
         {artist && (
-          <>
+          <header style={{ paddingTop: "16px", paddingBottom: "40px" }}>
             {/* --- Artist summary --- */}
-            <div style={{ marginTop: "18px" }}>
-              <h1
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "clamp(40px, 6.4vw, 72px)",
+                lineHeight: 0.98,
+                fontWeight: 700,
+                letterSpacing: "-0.05em",
+              }}
+            >
+              {artist.name}
+            </h1>
+
+            {artist.reviewCount > 0 ? (
+              <dl
                 style={{
-                  margin: 0,
-                  fontSize: "32px",
-                  fontWeight: 700,
-                  letterSpacing: "-0.02em",
-                  lineHeight: 1.1,
+                  margin: "28px 0 0",
+                  padding: "18px 0",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  borderTop: "1px solid var(--line)",
+                  borderBottom: "1px solid var(--line)",
+                  maxWidth: "400px",
                 }}
               >
-                {artist.name}
-              </h1>
-
-              {artist.reviewCount > 0 ? (
-                <>
-                  <div
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column-reverse",
+                    gap: "6px",
+                  }}
+                >
+                  <dt style={{ fontSize: "12.5px", color: "var(--muted)" }}>
+                    Average
+                  </dt>
+                  <dd
                     style={{
+                      margin: 0,
                       display: "flex",
-                      alignItems: "baseline",
-                      gap: "11px",
-                      marginTop: "14px",
+                      alignItems: "center",
+                      gap: "10px",
+                      fontSize: "28px",
+                      fontWeight: 700,
+                      letterSpacing: "-0.04em",
+                      lineHeight: 1,
                     }}
                   >
+                    {artist.averageRating.toFixed(1)}
                     <StarRating
                       rating={Math.round(artist.averageRating)}
                       size={15}
-                      filledColor={CREAM}
-                      emptyColor="#333"
                     />
-                    <span
-                      style={{
-                        fontSize: "22px",
-                        fontWeight: 700,
-                        letterSpacing: "-0.01em",
-                      }}
-                    >
-                      {artist.averageRating}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "14px",
-                      color: "#8a8a8a",
-                      marginTop: "6px",
-                    }}
-                  >
-                    {artist.reviewCount}{" "}
-                    {artist.reviewCount === 1 ? "review" : "reviews"}
-                  </div>
-                </>
-              ) : (
+                  </dd>
+                </div>
                 <div
                   style={{
-                    fontSize: "14px",
-                    color: "#8a8a8a",
-                    marginTop: "14px",
+                    display: "flex",
+                    flexDirection: "column-reverse",
+                    gap: "6px",
+                    paddingLeft: "18px",
+                    borderLeft: "1px solid var(--line)",
                   }}
                 >
-                  No reviews yet
+                  <dt style={{ fontSize: "12.5px", color: "var(--muted)" }}>
+                    {artist.reviewCount === 1 ? "Review" : "Reviews"}
+                  </dt>
+                  <dd
+                    style={{
+                      margin: 0,
+                      fontSize: "28px",
+                      fontWeight: 700,
+                      letterSpacing: "-0.04em",
+                      lineHeight: 1,
+                    }}
+                  >
+                    {artist.reviewCount}
+                  </dd>
                 </div>
-              )}
-            </div>
+              </dl>
+            ) : (
+              <div
+                style={{
+                  marginTop: "14px",
+                  fontSize: "clamp(17px, 1.8vw, 20px)",
+                  color: "var(--muted)",
+                }}
+              >
+                No reviews yet
+              </div>
+            )}
+          </header>
+        )}
+      </div>
 
+      {artist && (
+        <section className="band">
+          <div
+            className="container-md"
+            style={{
+              paddingTop: "clamp(28px, 4vw, 48px)",
+              paddingBottom: "clamp(40px, 6vw, 80px)",
+            }}
+          >
             {/* --- Reviews section: heading + sort --- */}
             {artist.reviewCount > 0 && (
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  // center, not baseline: the sort control is now a pill,
-                  // and baseline-aligning a pill against a heading sits it
-                  // low.
+                  // center, not baseline: baseline-aligning a pill against
+                  // a heading sits it low.
                   alignItems: "center",
+                  flexWrap: "wrap",
                   gap: "12px",
-                  marginTop: "36px",
+                  marginBottom: "20px",
                 }}
               >
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: "15px",
-                    fontWeight: 600,
-                    letterSpacing: "-0.01em",
-                  }}
-                >
+                <h2 className="h3" style={{ fontSize: "clamp(22px, 2.4vw, 28px)" }}>
                   Reviews
                 </h2>
                 <SegmentedTabs
@@ -339,11 +364,12 @@ export default function ArtistPage() {
 
             {current.reviews.length === 0 && !loading && (
               <div
+                className="card"
                 style={{
-                  color: "#888",
-                  fontSize: "15px",
-                  padding: "24px 0",
-                  lineHeight: 1.6,
+                  textAlign: "center",
+                  padding: "48px 24px",
+                  fontSize: "17px",
+                  color: "var(--ink-2)",
                 }}
               >
                 No reviews of {artist.name} yet.
@@ -352,77 +378,67 @@ export default function ArtistPage() {
 
             {current.reviews.length > 0 && (
               <div
+                className="stack"
                 style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "15px",
-                  marginTop: "16px",
+                  gap: "14px",
                   opacity: loading ? 0.5 : 1,
                   transition: "opacity 120ms ease",
                 }}
               >
-                {/* Rotating tints: each card is a DIFFERENT performance, so
-                    the variety the rotation implies is real. */}
-                {current.reviews.map((review, i) => (
-                  <ReviewSurface key={review.id} tintIndex={i}>
-                  <ReviewItem
-                    review={review}
-                    context={
-                      // Performance context — the venue/date IS the story
-                      // on this page, and links to that specific show.
-                      <Link
-                        href={`/show/${review.show.id}`}
-                        style={{
-                          display: "inline-block",
-                          textDecoration: "none",
-                        }}
-                      >
-                        {review.show.venue?.name && (
-                          <div
-                            style={{
-                              fontSize: "15px",
-                              fontWeight: 500,
-                              color: "#d8d1c2",
-                            }}
-                          >
-                            {review.show.venue.name}
-                          </div>
-                        )}
-                        <div
-                          style={{
-                            fontSize: "13.5px",
-                            color: "#6f6f6f",
-                            marginTop: "2px",
-                          }}
+                {current.reviews.map((review) => (
+                  <ReviewSurface key={review.id}>
+                    <ReviewItem
+                      review={review}
+                      context={
+                        // Performance context — the venue/date IS the story
+                        // on this page, and links to that specific show.
+                        <Link
+                          href={`/show/${review.show.id}`}
+                          className="link-quiet"
+                          style={{ display: "inline-block" }}
                         >
-                          {new Date(review.show.localDate).toLocaleDateString(
-                            undefined,
-                            {
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                            },
+                          {review.show.venue?.name && (
+                            <div
+                              style={{
+                                fontSize: "15px",
+                                fontWeight: 600,
+                                letterSpacing: "-0.01em",
+                              }}
+                            >
+                              {review.show.venue.name}
+                            </div>
                           )}
+                          <div
+                            className="meta"
+                            style={{ marginTop: "2px" }}
+                          >
+                            {new Date(review.show.localDate).toLocaleDateString(
+                              undefined,
+                              {
+                                year: "numeric",
+                                month: "long",
+                                day: "numeric",
+                              },
+                            )}
+                          </div>
+                        </Link>
+                      }
+                      actions={
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <CommentsSection
+                            reviewId={review.id}
+                            initialCount={review.commentCount}
+                          />
                         </div>
-                      </Link>
-                    }
-                    actions={
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <CommentsSection
-                          reviewId={review.id}
-                          initialCount={review.commentCount}
-                          variant="editorial"
-                        />
-                      </div>
-                    }
-                  />
+                      }
+                    />
                   </ReviewSurface>
                 ))}
               </div>
             )}
 
             {hasMore && (
-              <div style={{ marginTop: "48px" }}>
+              <div style={{ marginTop: "32px" }}>
                 <LoadMore
                   onClick={loadMore}
                   loading={loadingMore}
@@ -430,9 +446,9 @@ export default function ArtistPage() {
                 />
               </div>
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

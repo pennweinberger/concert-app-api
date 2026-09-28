@@ -60,28 +60,19 @@ function VerifyEmailInner() {
   }
 
   return (
-    <div style={{ maxWidth: "420px", margin: "60px auto 0" }}>
-      <h1
-        style={{
-          fontSize: "30px",
-          marginBottom: "24px",
-          fontFamily: "var(--font-display), sans-serif",
-          fontWeight: 700,
-          letterSpacing: "-0.02em",
-        }}
-      >
+    <div
+      className="container-xs"
+      style={{ paddingTop: "clamp(40px,8vw,96px)", paddingBottom: "80px" }}
+    >
+      <h1 className="h1" style={{ marginBottom: "24px" }}>
         Verify email
       </h1>
 
       {missingToken && status.kind === "ready" && (
         <div
-          style={{
-            background: "#1f1f1f",
-            padding: "12px",
-            borderRadius: "12px",
-            marginBottom: "16px",
-            color: "#ff8080",
-          }}
+          className="notice notice-error"
+          role="alert"
+          style={{ marginBottom: "16px" }}
         >
           No token in the link. Use the link from your email.
         </div>
@@ -89,22 +80,20 @@ function VerifyEmailInner() {
 
       {!missingToken && status.kind === "ready" && (
         <>
-          <p style={{ color: "#aaa", marginBottom: "20px" }}>
+          <p
+            style={{
+            color: "var(--ink-2)",
+            margin: "0 0 24px",
+            fontSize: "16px",
+            lineHeight: 1.55,
+          }}
+          >
             Click the button below to confirm your email address.
           </p>
           <button
             onClick={verify}
-            style={{
-              width: "100%",
-              padding: "14px",
-              borderRadius: "12px",
-              border: "none",
-              background: "#f4f1ea",
-              color: "#0a0a0a",
-              cursor: "pointer",
-              fontWeight: "bold",
-              marginBottom: "20px",
-            }}
+            className="btn btn-primary btn-lg btn-block"
+            style={{ marginBottom: "20px" }}
           >
             Verify my email
           </button>
@@ -112,31 +101,22 @@ function VerifyEmailInner() {
       )}
 
       {status.kind === "verifying" && (
-        <div style={{ color: "#aaa" }}>Verifying…</div>
+        <div className="meta" role="status">
+          Verifying…
+        </div>
       )}
 
       {status.kind === "ok" && (
         <>
           <div
-            style={{
-              background: "#1f1f1f",
-              padding: "12px",
-              borderRadius: "12px",
-              marginBottom: "16px",
-              color: "#9be597",
-            }}
+            className="notice notice-success"
+            role="status"
+            style={{ marginBottom: "16px" }}
           >
             Email verified
             {status.email ? `: ${status.email}` : ""}.
           </div>
-          <Link
-            href="/"
-            style={{
-              color: "#f4f1ea",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
-          >
+          <Link href="/" className="link" style={{ fontSize: "15px" }}>
             ← Back to feed
           </Link>
         </>
@@ -145,29 +125,18 @@ function VerifyEmailInner() {
       {status.kind === "error" && (
         <>
           <div
-            style={{
-              background: "#1f1f1f",
-              padding: "12px",
-              borderRadius: "12px",
-              marginBottom: "16px",
-              color: "#ff8080",
-            }}
+            className="notice notice-error"
+            role="alert"
+            style={{ marginBottom: "16px" }}
           >
             {status.message}
           </div>
-          <div style={{ color: "#aaa", fontSize: "14px" }}>
+          <div style={{ color: "var(--muted)", fontSize: "14.5px" }}>
             If your link expired, sign in and request a new verification
             email from the banner.
           </div>
           <div style={{ marginTop: "20px" }}>
-            <Link
-              href="/"
-              style={{
-                color: "#f4f1ea",
-                textDecoration: "underline",
-                textUnderlineOffset: "3px",
-              }}
-            >
+            <Link href="/" className="link" style={{ fontSize: "15px" }}>
               ← Back to feed
             </Link>
           </div>
@@ -179,15 +148,17 @@ function VerifyEmailInner() {
 
 export default function VerifyEmailPage() {
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: "#f4f1ea",
-        padding: "24px",
-      }}
-    >
-      <Suspense fallback={<div style={{ color: "#aaa" }}>Loading…</div>}>
+    <main className="page">
+      <Suspense
+        fallback={
+          <div
+            className="container-xs meta"
+            style={{ paddingTop: "clamp(40px,8vw,96px)" }}
+          >
+            Loading…
+          </div>
+        }
+      >
         <VerifyEmailInner />
       </Suspense>
     </main>

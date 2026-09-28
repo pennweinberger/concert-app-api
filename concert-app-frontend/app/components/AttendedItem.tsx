@@ -27,42 +27,38 @@ export default function AttendedItem({
   isOwner: boolean;
 }) {
   return (
-    <article id={`attended-${show.id}`} style={{ scrollMarginTop: "24px" }}>
+    <article id={`attended-${show.id}`} style={{ scrollMarginTop: "88px" }}>
       <h3
         style={{
           margin: 0,
-          fontSize: "24px",
+          fontSize: "clamp(22px, 2.4vw, 26px)",
           fontWeight: 700,
-          letterSpacing: "-0.02em",
+          letterSpacing: "-0.035em",
           lineHeight: 1.1,
         }}
       >
-        <Link
-          href={`/show/${show.id}`}
-          style={{ color: "#f4f1ea", textDecoration: "none" }}
-        >
+        <Link href={`/show/${show.id}`} className="link-quiet">
           {show.artist.name}
         </Link>
       </h3>
 
       {/* Attendance state, where a rating would be. */}
       <div
+        className="meta"
         style={{
-          fontSize: "13px",
-          color: "#7a7a7a",
-          marginTop: "11px",
+          marginTop: "12px",
           display: "inline-flex",
           alignItems: "center",
           gap: "6px",
         }}
       >
         <svg
-          width="14"
-          height="14"
+          width="15"
+          height="15"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="2.2"
           strokeLinecap="round"
           strokeLinejoin="round"
           aria-hidden="true"
@@ -73,26 +69,25 @@ export default function AttendedItem({
         Attended
       </div>
 
-      <div style={{ fontSize: "14px", color: "#8a8a8a", marginTop: "13px" }}>
+      <div
+        style={{
+          fontSize: "15px",
+          fontWeight: 500,
+          color: "var(--ink-2)",
+          marginTop: "12px",
+        }}
+      >
         {show.venue.name}
       </div>
-      <div style={{ fontSize: "13.5px", color: "#6f6f6f", marginTop: "1px" }}>
+      <div className="meta" style={{ marginTop: "2px" }}>
         {formatShowDate(show.localDate, { longMonth: true })}
       </div>
 
       {isOwner && (
-        <div style={{ marginTop: "13px" }}>
+        <div style={{ marginTop: "16px" }}>
           <Link
             href={`/review/new?showId=${show.id}`}
-            style={{
-              display: "inline-block",
-              fontSize: "13px",
-              color: "#8a8a8a",
-              border: "1px solid #2e2e2e",
-              borderRadius: "8px",
-              padding: "6px 12px",
-              textDecoration: "none",
-            }}
+            className="btn btn-outline btn-sm"
           >
             Write a review
           </Link>

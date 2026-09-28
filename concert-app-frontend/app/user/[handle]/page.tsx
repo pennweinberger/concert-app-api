@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { authHeaders, getToken, useAuthUser } from "../../lib/auth";
-import Masthead from "../../components/Masthead";
 import FollowButton from "../../components/FollowButton";
 import Avatar from "../../components/Avatar";
 import CommentsSection from "../../components/CommentsSection";
@@ -14,14 +13,12 @@ import ReviewItem, {
 } from "../../components/ReviewItem";
 import AttendedItem from "../../components/AttendedItem";
 import LoadMore from "../../components/LoadMore";
-import PageGlow from "../../components/PageGlow";
 import ReviewSurface from "../../components/ReviewSurface";
+import { STAR_PATH } from "../../components/StarRating";
 import { formatShowDate } from "../../lib/dateFormat";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
-
-const CREAM = "#f4f1ea";
 
 type HistoryShow = {
   id: string;
@@ -273,50 +270,54 @@ export default function UserPage() {
 
   const history = [...(user?.history ?? []), ...extraHistory];
 
+  const joinedLabel = user
+    ? new Date(user.joinedAt).toLocaleDateString(undefined, {
+        month: "long",
+        year: "numeric",
+      })
+    : "";
+
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: CREAM,
-        padding: "24px",
-      }}
-    >
-      <PageGlow />
-
-      <div
-        style={{
-          maxWidth: "700px",
-          margin: "0 auto",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        <Masthead />
-
-        <div style={{ marginTop: "24px" }}>
-          <Link
-            href="/"
-            style={{
-              color: "#6f6f6f",
-              fontSize: "13px",
-              textDecoration: "none",
-            }}
+    <main className="page">
+      <div className="container-md" style={{ paddingTop: "20px" }}>
+        <Link
+          href="/"
+          className="link"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "2px",
+            minHeight: "40px",
+            fontSize: "15px",
+          }}
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
           >
-            ← Back
-          </Link>
-        </div>
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
+          Back
+        </Link>
 
         {loading && !user && (
-          <div style={{ color: "#888", fontSize: "14px", padding: "20px 0" }}>
-            Loading…
+          <div aria-busy="true" style={{ padding: "24px 0 48px" }}>
+            <span className="sr-only">Loading…</span>
+            <div className="skeleton" style={{ width: "72px", height: "72px", borderRadius: "50%" }} />
+            <div className="skeleton" style={{ width: "55%", height: "56px", marginTop: "20px" }} />
+            <div className="skeleton" style={{ width: "30%", height: "18px", marginTop: "16px" }} />
           </div>
         )}
 
         {!loading && error && (
-          <div
-            style={{ color: "#ff8080", fontSize: "14px", padding: "20px 0" }}
-          >
+          <div className="notice notice-error" style={{ margin: "16px 0 48px" }}>
             {error}
           </div>
         )}
@@ -324,81 +325,43 @@ export default function UserPage() {
         {user && (
           <>
             {/* --- Identity header --- */}
-            <div
+            <header
               style={{
-                marginTop: "20px",
+                paddingTop: "16px",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "flex-start",
-                gap: "16px",
+                flexWrap: "wrap",
+                gap: "20px",
               }}
             >
               <div style={{ minWidth: 0 }}>
-                <Avatar
-                  handle={user.handle}
-                  name={user.name}
-                  size={64}
-                />
+                <Avatar handle={user.handle} name={user.name} size={72} />
                 <h1
                   style={{
-                    margin: "14px 0 0",
-                    fontSize: "26px",
+                    margin: "20px 0 0",
+                    fontSize: "clamp(40px, 6.4vw, 72px)",
+                    lineHeight: 0.98,
                     fontWeight: 700,
-                    letterSpacing: "-0.02em",
-                    lineHeight: 1.1,
+                    letterSpacing: "-0.05em",
+                    overflowWrap: "anywhere",
                   }}
                 >
                   {user.name || `@${user.handle}`}
                 </h1>
-                {user.name && (
-                  <div
-                    style={{
-                      fontSize: "14px",
-                      color: "#6f6f6f",
-                      marginTop: "3px",
-                    }}
-                  >
-                    @{user.handle}
-                  </div>
-                )}
                 <div
                   style={{
-                    fontSize: "13px",
-                    color: "#6f6f6f",
-                    marginTop: "10px",
+                    marginTop: "12px",
+                    fontSize: "clamp(17px, 1.8vw, 20px)",
+                    fontWeight: 500,
+                    letterSpacing: "-0.012em",
                   }}
                 >
-                  Joined{" "}
-                  {new Date(user.joinedAt).toLocaleDateString(undefined, {
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </div>
-                <div
-                  style={{
-                    fontSize: "15px",
-                    color: "#d8d1c2",
-                    marginTop: "16px",
-                  }}
-                >
-                  {user.attendedShowCount}{" "}
-                  {user.attendedShowCount === 1 ? "concert" : "concerts"}{" "}
-                  attended
-                  <span style={{ color: "#4a4a4a", margin: "0 7px" }}>•</span>
-                  {user.reviewCount}{" "}
-                  {user.reviewCount === 1 ? "review" : "reviews"}
-                </div>
-                {/* Deliberately quieter than the concert metrics. */}
-                <div
-                  style={{
-                    fontSize: "12.5px",
-                    color: "#6f6f6f",
-                    marginTop: "7px",
-                  }}
-                >
-                  Followers {user.followerCount}
-                  <span style={{ color: "#3f3f3f", margin: "0 6px" }}>•</span>
-                  Following {user.followingCount}
+                  {user.name && <>@{user.handle}</>}
+                  <span style={{ color: "var(--muted)", fontWeight: 400 }}>
+                    {user.name ? " · " : ""}
+                    Joined {joinedLabel}
+                  </span>
                 </div>
               </div>
 
@@ -407,7 +370,7 @@ export default function UserPage() {
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: "10px",
+                    gap: "8px",
                     flexShrink: 0,
                   }}
                 >
@@ -428,34 +391,96 @@ export default function UserPage() {
                   )}
                 </div>
               )}
+            </header>
+
+            {/* --- Stats: concert metrics lead --- */}
+            <dl
+              style={{
+                margin: "28px 0 0",
+                padding: "18px 0",
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                borderTop: "1px solid var(--line)",
+                borderBottom: "1px solid var(--line)",
+                maxWidth: "360px",
+              }}
+            >
+              {[
+                {
+                  label:
+                    user.attendedShowCount === 1
+                      ? "Concert attended"
+                      : "Concerts attended",
+                  value: user.attendedShowCount,
+                },
+                {
+                  label: user.reviewCount === 1 ? "Review" : "Reviews",
+                  value: user.reviewCount,
+                },
+              ].map((stat, i) => (
+                <div
+                  key={stat.label}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column-reverse",
+                    gap: "4px",
+                    paddingLeft: i === 0 ? 0 : "18px",
+                    borderLeft: i === 0 ? "none" : "1px solid var(--line)",
+                  }}
+                >
+                  <dt style={{ fontSize: "12.5px", color: "var(--muted)" }}>
+                    {stat.label}
+                  </dt>
+                  <dd
+                    style={{
+                      margin: 0,
+                      fontSize: "28px",
+                      fontWeight: 700,
+                      letterSpacing: "-0.04em",
+                      lineHeight: 1,
+                    }}
+                  >
+                    {stat.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+
+            {/* Deliberately quieter than the concert metrics. */}
+            <div className="meta" style={{ margin: "14px 0 40px" }}>
+              Followers {user.followerCount}
+              <span aria-hidden="true" style={{ margin: "0 7px" }}>·</span>
+              Following {user.followingCount}
             </div>
+          </>
+        )}
+      </div>
 
-            {/* Identity -> history transition. */}
-            <div
-              style={{ borderTop: "1px solid #1c1c1c", marginTop: "34px" }}
-            />
-
+      {user && (
+        <section className="band">
+          <div
+            className="container-md"
+            style={{
+              paddingTop: "clamp(28px, 4vw, 48px)",
+              paddingBottom: "clamp(40px, 6vw, 80px)",
+            }}
+          >
             {/* --- Unified concert history --- */}
             {history.length === 0 && !loading && (
               <div
+                className="card"
                 style={{
-                  color: "#888",
-                  fontSize: "15px",
-                  padding: "28px 0",
-                  lineHeight: 1.6,
+                  textAlign: "center",
+                  padding: "48px 24px",
+                  fontSize: "17px",
+                  lineHeight: 1.5,
+                  color: "var(--ink-2)",
                 }}
               >
                 {isOwnProfile ? (
                   <>
                     No concerts yet. Mark a show as attended or{" "}
-                    <Link
-                      href="/review/new"
-                      style={{
-                        color: CREAM,
-                        textDecoration: "underline",
-                        textUnderlineOffset: "3px",
-                      }}
-                    >
+                    <Link href="/review/new" className="link">
                       write a review
                     </Link>{" "}
                     to start your history.
@@ -467,28 +492,21 @@ export default function UserPage() {
             )}
 
             {history.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "15px",
-                  marginTop: "20px",
-                }}
-              >
-                {history.map((item, i) => {
+              <div className="stack" style={{ gap: "14px" }}>
+                {history.map((item) => {
                   const artistHeading = (
                     <h2
                       style={{
                         margin: 0,
-                        fontSize: "24px",
+                        fontSize: "clamp(22px, 2.4vw, 26px)",
                         fontWeight: 700,
-                        letterSpacing: "-0.02em",
+                        letterSpacing: "-0.035em",
                         lineHeight: 1.1,
                       }}
                     >
                       <Link
                         href={`/artist/${item.show.artist.id}`}
-                        style={{ color: CREAM, textDecoration: "none" }}
+                        className="link-quiet"
                       >
                         {item.show.artist.name}
                       </Link>
@@ -517,54 +535,59 @@ export default function UserPage() {
                   // stray click can't navigate away mid-edit.
                   if (isEditing) {
                     return (
-                      <ReviewSurface key={`r:${review.id}`} tintIndex={i}>
+                      <ReviewSurface key={`r:${review.id}`}>
                         {artistHeading}
-                        <div style={{ marginTop: "12px" }}>
-                          <div style={{ display: "flex", gap: "6px" }}>
+                        <div style={{ marginTop: "14px" }}>
+                          <div style={{ display: "flex", gap: "2px" }}>
                             {[1, 2, 3, 4, 5].map((n) => (
                               <button
                                 key={n}
                                 onClick={() => setEditRating(n)}
                                 aria-label={`${n} star${n === 1 ? "" : "s"}`}
                                 style={{
+                                  width: "40px",
+                                  height: "40px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
                                   background: "none",
                                   border: "none",
+                                  borderRadius: "var(--radius-sm)",
                                   cursor: "pointer",
                                   padding: 0,
-                                  fontSize: "24px",
-                                  color: n <= editRating ? CREAM : "#333",
-                                  lineHeight: 1,
                                 }}
                               >
-                                ★
+                                <svg
+                                  width="28"
+                                  height="28"
+                                  viewBox="0 0 24 24"
+                                  aria-hidden="true"
+                                  style={{ display: "block" }}
+                                >
+                                  <path
+                                    d={STAR_PATH}
+                                    fill={
+                                      n <= editRating
+                                        ? "var(--ink)"
+                                        : "var(--disabled)"
+                                    }
+                                  />
+                                </svg>
                               </button>
                             ))}
                           </div>
                           <textarea
+                            className="input"
                             value={editText}
                             onChange={(e) => setEditText(e.target.value)}
                             rows={4}
-                            style={{
-                              width: "100%",
-                              marginTop: "12px",
-                              padding: "12px",
-                              borderRadius: "10px",
-                              background: "#141414",
-                              color: CREAM,
-                              border: "1px solid #2a2a2a",
-                              resize: "vertical",
-                              fontFamily: "inherit",
-                              fontSize: "15px",
-                              boxSizing: "border-box",
-                            }}
+                            aria-label="Review text"
+                            style={{ marginTop: "12px" }}
                           />
                           {editError && (
                             <div
-                              style={{
-                                color: "#ff8080",
-                                fontSize: "13px",
-                                marginTop: "8px",
-                              }}
+                              className="notice notice-error"
+                              style={{ marginTop: "10px" }}
                             >
                               {editError}
                             </div>
@@ -573,40 +596,19 @@ export default function UserPage() {
                             style={{
                               display: "flex",
                               gap: "10px",
-                              marginTop: "12px",
+                              marginTop: "14px",
                             }}
                           >
                             <button
                               onClick={() => saveEdit(review.id)}
                               disabled={editSubmitting}
-                              style={{
-                                background: editSubmitting ? "#555" : CREAM,
-                                color: editSubmitting ? "#aaa" : "#0a0a0a",
-                                border: "none",
-                                borderRadius: "8px",
-                                padding: "8px 16px",
-                                fontWeight: 600,
-                                fontSize: "13.5px",
-                                cursor: editSubmitting
-                                  ? "not-allowed"
-                                  : "pointer",
-                                fontFamily: "inherit",
-                              }}
+                              className="btn btn-primary"
                             >
                               {editSubmitting ? "Saving…" : "Save"}
                             </button>
                             <button
                               onClick={cancelEdit}
-                              style={{
-                                background: "none",
-                                color: "#aaa",
-                                border: "1px solid #333",
-                                borderRadius: "8px",
-                                padding: "8px 16px",
-                                fontSize: "13.5px",
-                                cursor: "pointer",
-                                fontFamily: "inherit",
-                              }}
+                              className="btn btn-secondary"
                             >
                               Cancel
                             </button>
@@ -628,86 +630,67 @@ export default function UserPage() {
                   };
 
                   return (
-                    <ReviewSurface key={`r:${review.id}`} tintIndex={i}>
-                    <ReviewItem
-                      review={reviewData}
-                      heading={artistHeading}
-                      // The header already establishes whose reviews these are.
-                      hideByline
-                      context={
-                        <Link
-                          href={`/show/${item.show.id}`}
-                          style={{
-                            display: "inline-block",
-                            textDecoration: "none",
-                          }}
-                        >
-                          <div
-                            style={{ fontSize: "14px", color: "#8a8a8a" }}
+                    <ReviewSurface key={`r:${review.id}`}>
+                      <ReviewItem
+                        review={reviewData}
+                        heading={artistHeading}
+                        // The header already establishes whose reviews these are.
+                        hideByline
+                        context={
+                          <Link
+                            href={`/show/${item.show.id}`}
+                            className="link-quiet"
+                            style={{ display: "inline-block" }}
                           >
-                            {item.show.venue.name}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "13.5px",
-                              color: "#6f6f6f",
-                              marginTop: "1px",
-                            }}
-                          >
-                            {formatShowDate(item.show.localDate, { longMonth: true })}
-                          </div>
-                        </Link>
-                      }
-                      actions={
-                        <>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <CommentsSection
-                              reviewId={review.id}
-                              initialCount={review.commentCount}
-                              variant="editorial"
-                            />
-                          </div>
-                          {isOwnProfile && (
-                            <span
+                            <div
                               style={{
-                                display: "flex",
-                                gap: "14px",
-                                flexShrink: 0,
+                                fontSize: "15px",
+                                fontWeight: 500,
+                                color: "var(--ink-2)",
                               }}
                             >
-                              <button
-                                onClick={() => startEdit(item)}
+                              {item.show.venue.name}
+                            </div>
+                            <div className="meta" style={{ marginTop: "2px" }}>
+                              {formatShowDate(item.show.localDate, {
+                                longMonth: true,
+                              })}
+                            </div>
+                          </Link>
+                        }
+                        actions={
+                          <>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <CommentsSection
+                                reviewId={review.id}
+                                initialCount={review.commentCount}
+                              />
+                            </div>
+                            {isOwnProfile && (
+                              <span
                                 style={{
-                                  background: "none",
-                                  border: "none",
-                                  padding: 0,
-                                  color: "#6a6a6a",
-                                  fontSize: "13px",
-                                  cursor: "pointer",
-                                  fontFamily: "inherit",
+                                  display: "flex",
+                                  gap: "16px",
+                                  flexShrink: 0,
                                 }}
                               >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => deleteReview(review.id)}
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  padding: 0,
-                                  color: "#6a6a6a",
-                                  fontSize: "13px",
-                                  cursor: "pointer",
-                                  fontFamily: "inherit",
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </span>
-                          )}
-                        </>
-                      }
-                    />
+                                <button
+                                  onClick={() => startEdit(item)}
+                                  className="text-action"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => deleteReview(review.id)}
+                                  className="text-action"
+                                >
+                                  Delete
+                                </button>
+                              </span>
+                            )}
+                          </>
+                        }
+                      />
                     </ReviewSurface>
                   );
                 })}
@@ -715,7 +698,7 @@ export default function UserPage() {
             )}
 
             {historyCursor && (
-              <div style={{ marginTop: "48px" }}>
+              <div style={{ marginTop: "32px" }}>
                 <LoadMore
                   onClick={loadMoreHistory}
                   loading={loadingMore}
@@ -723,9 +706,9 @@ export default function UserPage() {
                 />
               </div>
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

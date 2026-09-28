@@ -1,147 +1,113 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import Link from "next/link";
-import { clearSession, useAuthUser } from "../lib/auth";
+import { usePathname } from "next/navigation";
+import { useAuthUser } from "../lib/auth";
 import NotificationBell from "./NotificationBell";
 import ProfileMenu from "./ProfileMenu";
+import ShowSearch from "./ShowSearch";
 
-// Shared site masthead (Phase 1 design, extracted in Phase 2 so the
-// homepage and show page share one navigation). Desktop (>768px): full
-// link row. Mobile / narrow tablet: compact row (Write Review, bell,
-// avatar) with secondary destinations inside ProfileMenu. The
-// masthead-nav-* classes live in globals.css.
+// Site-wide masthead, rendered once from the root layout.
+//
+// Desktop: wordmark · search · nav, on a three-column grid; the search
+// fills the space between the wordmark and a nav whose width varies with
+// auth state. Mobile: the search
+// column collapses (pages that need search on mobile — the feed — render
+// their own full-width ShowSearch) and the nav shrinks to icons.
+//
+// Signed in, secondary destinations (Profile, Settings, Admin, Sign out)
+// live in the avatar menu on every breakpoint; Find Users and the bell
+// stay visible on desktop.
 
-const navLinkStyle: CSSProperties = {
-  color: "#8f8f8f",
-  textDecoration: "none",
-  fontSize: "14px",
-};
+// Routes that already put Write Review front and centre, so the header
+// doesn't offer the same action twice.
+const HIDE_WRITE_REVIEW = new Set(["/", "/review/new"]);
 
-const navButtonStyle: CSSProperties = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  color: "#8f8f8f",
-  cursor: "pointer",
-  fontSize: "14px",
-  fontFamily: "inherit",
-};
+// Routes where the header search would compete with the page's own task.
+const HIDE_SEARCH = new Set([
+  "/signin",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/confirm-delete",
+]);
 
-const writeReviewPillStyle: CSSProperties = {
-  color: "#f4f1ea",
-  fontSize: "13.5px",
-  fontWeight: 500,
-  border: "1px solid #333",
-  borderRadius: "8px",
-  padding: "6px 12px",
-  textDecoration: "none",
-};
-
-export default function Masthead({
-  /**
-   * Suppress the Write Review pill. Set by surfaces that already show the
-   * magenta WriteReviewRow, so the same action is not offered twice. Other
-   * pages keep the pill as their only path to the review flow — do not
-   * remove it from here without giving those pages a replacement.
-   */
-  hideWriteReview = false,
-}: {
-  hideWriteReview?: boolean;
-} = {}) {
+export default function Masthead() {
   const authUser = useAuthUser();
+  const pathname = usePathname() ?? "/";
+  const showWriteReview = !HIDE_WRITE_REVIEW.has(pathname);
+  const showSearch = !HIDE_SEARCH.has(pathname);
 
   return (
-    <header
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: "12px",
-        marginBottom: "26px",
-      }}
-    >
-      <Link
-        href="/"
-        style={{
-          fontSize: "19px",
-          fontWeight: 600,
-          letterSpacing: "-0.01em",
-          color: "#f4f1ea",
-          textDecoration: "none",
-        }}
-      >
-        Afterset
-      </Link>
+    <header className="masthead">
+      <div className="container masthead-inner">
+        <Link
+          href="/"
+          style={{
+            justifySelf: "start",
+            fontSize: "22px",
+            fontWeight: 700,
+            letterSpacing: "-0.04em",
+            color: "var(--ink)",
+            textDecoration: "none",
+          }}
+        >
+          Afterset
+        </Link>
 
-      {/* Desktop: full link row. */}
-      <nav className="masthead-nav-desktop" aria-label="Primary">
-        {!hideWriteReview && (
-          <Link href="/review/new" style={writeReviewPillStyle}>
-            Write Review
-          </Link>
-        )}
-        {authUser ? (
-          <>
-            {authUser.isAdmin && (
-              <Link
-                href="/admin/moderation"
-                style={{ ...navLinkStyle, color: "#ff8080" }}
+        <div className="masthead-search">
+          {showSearch && <ShowSearch variant="header" />}
+        </div>
+
+        <nav className="masthead-nav" aria-label="Primary">
+          {showWriteReview && (
+            <Link
+              href="/review/new"
+              className="btn btn-secondary btn-sm hide-mobile"
+              style={{ marginRight: "6px" }}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                aria-hidden="true"
               >
-                Admin
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Write Review
+            </Link>
+          )}
+          {authUser ? (
+            <>
+              <Link href="/people" className="masthead-link hide-mobile">
+                Find Users
               </Link>
-            )}
-            <Link href="/people" style={navLinkStyle}>
-              Find Users
-            </Link>
-            <NotificationBell />
-            <Link href={`/user/${authUser.handle}`} style={navLinkStyle}>
-              Profile
-            </Link>
-            <Link href="/settings" style={navLinkStyle}>
-              Settings
-            </Link>
-            <button onClick={() => clearSession()} style={navButtonStyle}>
-              Sign out
-            </button>
-          </>
-        ) : (
-          <>
-            <Link href="/signin" style={navLinkStyle}>
-              Sign in
-            </Link>
-            <Link href="/signup" style={navLinkStyle}>
-              Sign up
-            </Link>
-          </>
-        )}
-      </nav>
-
-      {/* Mobile / narrow tablet: compact row + profile menu. */}
-      <div className="masthead-nav-compact" aria-label="Primary">
-        {!hideWriteReview && (
-          <Link href="/review/new" style={writeReviewPillStyle}>
-            Write Review
-          </Link>
-        )}
-        {authUser ? (
-          <>
-            <NotificationBell />
-            <ProfileMenu
-              handle={authUser.handle}
-              isAdmin={!!authUser.isAdmin}
-            />
-          </>
-        ) : (
-          <>
-            <Link href="/signin" style={navLinkStyle}>
-              Sign in
-            </Link>
-            <Link href="/signup" style={navLinkStyle}>
-              Sign up
-            </Link>
-          </>
-        )}
+              <NotificationBell />
+              <ProfileMenu
+                handle={authUser.handle}
+                isAdmin={!!authUser.isAdmin}
+              />
+            </>
+          ) : (
+            <>
+              <Link href="/signin" className="masthead-link">
+                Sign in
+              </Link>
+              <Link
+                href="/signup"
+                className="btn btn-primary btn-sm"
+                style={{ marginLeft: "4px" }}
+              >
+                Sign up
+              </Link>
+            </>
+          )}
+        </nav>
       </div>
     </header>
   );

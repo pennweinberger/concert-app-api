@@ -96,18 +96,7 @@ export default function FollowButton({
     <button
       onClick={toggle}
       aria-pressed={following}
-      style={{
-        padding: "8px 18px",
-        borderRadius: "20px",
-        border: following ? "1px solid #444" : "1px solid #f4f1ea",
-        background: "transparent",
-        color: following ? "#aaa" : "#f4f1ea",
-        cursor: "pointer",
-        fontSize: "13px",
-        fontWeight: "bold",
-        lineHeight: 1,
-        fontFamily: "inherit",
-      }}
+      className={`btn btn-sm ${following ? "btn-outline" : "btn-primary"}`}
     >
       {following ? "Following" : "Follow"}
     </button>

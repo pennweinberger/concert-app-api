@@ -136,44 +136,46 @@ export default function AttendanceButton({
           justifyContent: "center",
           gap: "7px",
           width: "100%",
-          padding: "10px 12px",
-          borderRadius: "8px",
+          height: "52px",
+          padding: "0 10px",
+          borderRadius: "999px",
+          whiteSpace: "nowrap",
           // border + background live in .peer-action / .is-selected so the
           // selected and hover states can actually apply; an inline
           // declaration would outrank them.
-          color: "#f4f1ea",
           cursor:
             blockedByReview && attended ? "not-allowed" : "pointer",
-          fontSize: "13.5px",
-          fontWeight: 500,
+          // Shrinks slightly on narrow phones so "Mark as Attended" stays
+          // on one line inside a half-width button.
+          fontSize: "clamp(14px, 3.9vw, 15px)",
+          fontWeight: 600,
+          letterSpacing: "-0.01em",
           fontFamily: "inherit",
           opacity: blockedByReview && attended ? 0.65 : 1,
           boxSizing: "border-box",
         }}
       >
-        {attended && (
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-            style={{ display: "block", flex: "0 0 auto" }}
-          >
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
-        )}
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={{ display: "block", flex: "0 0 auto" }}
+        >
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
         {attended ? "Attended" : "Mark as Attended"}
       </button>
       {errorFlash && (
         <div
           style={{
-            color: "#ff8080",
-            fontSize: "12px",
+            color: "var(--danger)",
+            fontSize: "12.5px",
             marginTop: "6px",
             textAlign: "center",
           }}

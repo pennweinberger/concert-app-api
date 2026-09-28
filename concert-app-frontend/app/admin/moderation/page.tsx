@@ -77,139 +77,246 @@ export default function AdminModerationPage() {
 
   if (forbidden) {
     return (
-      <main style={{ background: "#0a0a0a", minHeight: "100vh", color: "#f4f1ea", padding: "24px" }}>
-        <div style={{ maxWidth: "760px", margin: "0 auto" }}>
-          <p>You don&rsquo;t have access to this page.</p>
-          <Link href="/" style={{ color: "#f4f1ea" }}>← Back to feed</Link>
+      <main className="page">
+        <div
+          className="container-md"
+          style={{ paddingTop: "20px", paddingBottom: "80px" }}
+        >
+          <BackToFeed />
+          <p style={{ margin: "16px 0 0", fontSize: "17px", color: "var(--ink-2)" }}>
+            You don&rsquo;t have access to this page.
+          </p>
         </div>
       </main>
     );
   }
 
   return (
-    <main style={{ background: "#0a0a0a", minHeight: "100vh", color: "#f4f1ea", padding: "24px" }}>
-      <div style={{ maxWidth: "760px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "20px" }}>
-          <Link href="/" style={{ color: "#f4f1ea", textDecoration: "underline", textUnderlineOffset: "3px" }}>
-            ← Back to feed
-          </Link>
-        </div>
-        <h1 style={{ fontSize: "28px", fontWeight: 700, marginBottom: "6px" }}>Moderation queue</h1>
-        <div style={{ color: "#888", marginBottom: "20px" }}>
-          {authUser?.isAdmin === false ? "" : `${items.length} open item${items.length === 1 ? "" : "s"}`}
-        </div>
+    <main className="page">
+      <div className="container-md" style={{ paddingTop: "20px", paddingBottom: "32px" }}>
+        <BackToFeed />
+        <header style={{ paddingTop: "16px" }}>
+          <h1 className="h1">Moderation queue</h1>
+          <div className="meta" style={{ marginTop: "10px", fontSize: "15px" }}>
+            {authUser?.isAdmin === false ? "" : `${items.length} open item${items.length === 1 ? "" : "s"}`}
+          </div>
+        </header>
+      </div>
 
-        {loading && <div style={{ color: "#888" }}>Loading…</div>}
-        {!loading && items.length === 0 && (
-          <div style={{ color: "#888", padding: "16px" }}>Queue is clear. 🎉</div>
-        )}
-
-        {items.map((it) => {
-          const key = `${it.targetType}:${it.targetId}`;
-          const isContent = it.targetType === "REVIEW" || it.targetType === "COMMENT";
-          const blocked =
-            it.content && (it.content.kind === "review" || it.content.kind === "comment")
-              ? it.content.blocked
-              : false;
-          const suspended =
-            it.content && it.content.kind === "user" ? it.content.suspended : false;
-
-          return (
+      <section className="band">
+        <div
+          className="container-md"
+          style={{
+            paddingTop: "clamp(28px, 4vw, 48px)",
+            paddingBottom: "clamp(40px, 6vw, 80px)",
+          }}
+        >
+          {loading && <div className="meta">Loading…</div>}
+          {!loading && items.length === 0 && (
             <div
-              key={key}
+              className="card"
               style={{
-                background: "#141414",
-                border: "1px solid #2a2a2a",
-                borderRadius: "12px",
-                padding: "16px",
-                marginBottom: "12px",
+                textAlign: "center",
+                padding: "48px 24px",
+                fontSize: "17px",
+                color: "var(--ink-2)",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
-                <div style={{ fontSize: "12px", color: "#ff8080", fontWeight: 700 }}>
-                  {it.targetType} · {it.reportCount} report{it.reportCount === 1 ? "" : "s"}
-                  {blocked && " · BLOCKED"}
-                  {suspended && " · SUSPENDED"}
-                </div>
-                <div style={{ fontSize: "12px", color: "#777" }}>
-                  {fmt(it.firstReportedAt)} → {fmt(it.lastReportedAt)}
-                </div>
-              </div>
-
-              {/* Reported content */}
-              <div style={{ margin: "10px 0", color: "#e8e8e8" }}>
-                {it.content === null && <em style={{ color: "#777" }}>[content removed]</em>}
-                {it.content?.kind === "review" && <span>“{it.content.text}”</span>}
-                {it.content?.kind === "comment" && <span>“{it.content.body}”</span>}
-                {it.content?.kind === "user" && (
-                  <span>@{it.content.handle}{it.content.name ? ` (${it.content.name})` : ""}</span>
-                )}
-              </div>
-
-              {/* Author + reasons */}
-              <div style={{ fontSize: "13px", color: "#aaa", marginBottom: "6px" }}>
-                {it.author && (
-                  <>by <strong>@{it.author.handle}</strong> · </>
-                )}
-                {it.reasons.map((r) => `${r.reason} ×${r.count}`).join(", ")}
-              </div>
-              {it.detailsSamples.length > 0 && (
-                <div style={{ fontSize: "12px", color: "#888", marginBottom: "6px" }}>
-                  notes: {it.detailsSamples.map((d) => `“${d}”`).join(" · ")}
-                </div>
-              )}
-
-              {/* Quick links */}
-              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", margin: "8px 0" }}>
-                {it.link && (
-                  <Link href={it.link} style={{ color: "#7dafff", fontSize: "13px" }}>
-                    View {it.targetType === "USER" ? "profile" : "in context"} ↗
-                  </Link>
-                )}
-                {it.author && (
-                  <Link href={`/user/${it.author.handle}`} style={{ color: "#7dafff", fontSize: "13px" }}>
-                    Author profile + reviews ↗
-                  </Link>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "10px" }}>
-                {isContent && !blocked && (
-                  <ActionBtn label="Block" color="#ff4d6d" disabled={busy === key}
-                    onClick={() => act("/admin/moderation/block", { targetType: it.targetType, targetId: it.targetId }, key)} />
-                )}
-                {isContent && blocked && (
-                  <ActionBtn label="Restore" color="#7dff9b" disabled={busy === key}
-                    onClick={() => act("/admin/moderation/restore", { targetType: it.targetType, targetId: it.targetId }, key)} />
-                )}
-                {it.author && !suspended && (
-                  <ActionBtn label="Suspend user" color="#fbbf24" disabled={busy === key}
-                    onClick={() => act("/admin/moderation/suspend", { userId: it.author!.id }, key)} />
-                )}
-                {it.author && suspended && (
-                  <ActionBtn label="Unsuspend user" color="#7dff9b" disabled={busy === key}
-                    onClick={() => act("/admin/moderation/unsuspend", { userId: it.author!.id }, key)} />
-                )}
-                <ActionBtn label="Dismiss all" color="#888" disabled={busy === key}
-                  onClick={() => act("/admin/moderation/dismiss-target", { targetType: it.targetType, targetId: it.targetId }, key)} />
-              </div>
+              Queue is clear.
             </div>
-          );
-        })}
-      </div>
+          )}
+
+          <div className="stack" style={{ gap: "14px" }}>
+            {items.map((it) => {
+              const key = `${it.targetType}:${it.targetId}`;
+              const isContent = it.targetType === "REVIEW" || it.targetType === "COMMENT";
+              const blocked =
+                it.content && (it.content.kind === "review" || it.content.kind === "comment")
+                  ? it.content.blocked
+                  : false;
+              const suspended =
+                it.content && it.content.kind === "user" ? it.content.suspended : false;
+
+              return (
+                <div key={key} className="card">
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: "6px 12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "12.5px",
+                        fontWeight: 700,
+                        letterSpacing: "0.04em",
+                        color: "var(--danger)",
+                      }}
+                    >
+                      {it.targetType} · {it.reportCount} report{it.reportCount === 1 ? "" : "s"}
+                      {blocked && " · BLOCKED"}
+                      {suspended && " · SUSPENDED"}
+                    </div>
+                    <div className="meta" style={{ fontSize: "13px" }}>
+                      {fmt(it.firstReportedAt)} → {fmt(it.lastReportedAt)}
+                    </div>
+                  </div>
+
+                  {/* Reported content */}
+                  <div
+                    style={{
+                      margin: "14px 0",
+                      fontSize: "17px",
+                      lineHeight: 1.5,
+                      color: "var(--ink)",
+                    }}
+                  >
+                    {it.content === null && (
+                      <em style={{ color: "var(--muted)" }}>[content removed]</em>
+                    )}
+                    {it.content?.kind === "review" && <span>“{it.content.text}”</span>}
+                    {it.content?.kind === "comment" && <span>“{it.content.body}”</span>}
+                    {it.content?.kind === "user" && (
+                      <span>@{it.content.handle}{it.content.name ? ` (${it.content.name})` : ""}</span>
+                    )}
+                  </div>
+
+                  {/* Author + reasons */}
+                  <div style={{ fontSize: "14px", color: "var(--ink-2)", marginBottom: "6px" }}>
+                    {it.author && (
+                      <>by <strong>@{it.author.handle}</strong> · </>
+                    )}
+                    {it.reasons.map((r) => `${r.reason} ×${r.count}`).join(", ")}
+                  </div>
+                  {it.detailsSamples.length > 0 && (
+                    <div className="meta" style={{ fontSize: "13px", marginBottom: "6px" }}>
+                      notes: {it.detailsSamples.map((d) => `“${d}”`).join(" · ")}
+                    </div>
+                  )}
+
+                  {/* Quick links */}
+                  <div style={{ display: "flex", gap: "4px 18px", flexWrap: "wrap", margin: "8px 0" }}>
+                    {it.link && (
+                      <Link href={it.link} className="link" style={quickLinkStyle}>
+                        View {it.targetType === "USER" ? "profile" : "in context"}
+                        <ArrowUpRight />
+                      </Link>
+                    )}
+                    {it.author && (
+                      <Link href={`/user/${it.author.handle}`} className="link" style={quickLinkStyle}>
+                        Author profile + reviews
+                        <ArrowUpRight />
+                      </Link>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      flexWrap: "wrap",
+                      marginTop: "14px",
+                      paddingTop: "16px",
+                      borderTop: "1px solid var(--line-soft)",
+                    }}
+                  >
+                    {isContent && !blocked && (
+                      <ActionBtn label="Block" tone="danger" disabled={busy === key}
+                        onClick={() => act("/admin/moderation/block", { targetType: it.targetType, targetId: it.targetId }, key)} />
+                    )}
+                    {isContent && blocked && (
+                      <ActionBtn label="Restore" tone="secondary" disabled={busy === key}
+                        onClick={() => act("/admin/moderation/restore", { targetType: it.targetType, targetId: it.targetId }, key)} />
+                    )}
+                    {it.author && !suspended && (
+                      <ActionBtn label="Suspend user" tone="danger" disabled={busy === key}
+                        onClick={() => act("/admin/moderation/suspend", { userId: it.author!.id }, key)} />
+                    )}
+                    {it.author && suspended && (
+                      <ActionBtn label="Unsuspend user" tone="secondary" disabled={busy === key}
+                        onClick={() => act("/admin/moderation/unsuspend", { userId: it.author!.id }, key)} />
+                    )}
+                    <ActionBtn label="Dismiss all" tone="outline" disabled={busy === key}
+                      onClick={() => act("/admin/moderation/dismiss-target", { targetType: it.targetType, targetId: it.targetId }, key)} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
     </main>
+  );
+}
+
+const quickLinkStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "3px",
+  minHeight: "32px",
+  fontSize: "14px",
+} as const;
+
+function ArrowUpRight() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M7 17L17 7M8 7h9v9" />
+    </svg>
+  );
+}
+
+function BackToFeed() {
+  return (
+    <Link
+      href="/"
+      className="link"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "2px",
+        minHeight: "40px",
+        fontSize: "15px",
+      }}
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M15 5l-7 7 7 7" />
+      </svg>
+      Back to feed
+    </Link>
   );
 }
 
 function ActionBtn({
   label,
-  color,
+  tone,
   onClick,
   disabled,
 }: {
   label: string;
-  color: string;
+  tone: "danger" | "secondary" | "outline";
   onClick: () => void;
   disabled?: boolean;
 }) {
@@ -217,16 +324,7 @@ function ActionBtn({
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{
-        background: "none",
-        border: `1px solid ${color}`,
-        color,
-        borderRadius: "8px",
-        padding: "6px 12px",
-        fontSize: "13px",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.5 : 1,
-      }}
+      className={`btn btn-sm btn-${tone}`}
     >
       {label}
     </button>

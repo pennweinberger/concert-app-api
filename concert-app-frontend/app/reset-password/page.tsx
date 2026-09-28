@@ -71,42 +71,25 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div style={{ maxWidth: "420px", margin: "60px auto 0" }}>
-      <h1
-        style={{
-          fontSize: "30px",
-          marginBottom: "24px",
-          fontFamily: "var(--font-display), sans-serif",
-          fontWeight: 700,
-          letterSpacing: "-0.02em",
-        }}
-      >
+    <div
+      className="container-xs"
+      style={{ paddingTop: "clamp(40px,8vw,96px)", paddingBottom: "80px" }}
+    >
+      <h1 className="h1" style={{ marginBottom: "32px" }}>
         Set new password
       </h1>
 
       {!token && (
         <>
           <div
-            style={{
-              background: "#1f1f1f",
-              padding: "12px",
-              borderRadius: "12px",
-              marginBottom: "16px",
-              color: "#ff8080",
-            }}
+            className="notice notice-error"
+            role="alert"
+            style={{ marginBottom: "16px" }}
           >
             No reset token in the link. Use the link from your email, or
             request a new one.
           </div>
-          <Link
-            href="/forgot-password"
-            style={{
-              color: "#f4f1ea",
-              fontSize: "14px",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
-          >
+          <Link href="/forgot-password" className="link" style={{ fontSize: "15px" }}>
             Request a new reset link
           </Link>
         </>
@@ -115,25 +98,13 @@ function ResetPasswordForm() {
       {token && status.kind === "ok" && (
         <>
           <div
-            style={{
-              background: "#1f1f1f",
-              padding: "12px",
-              borderRadius: "12px",
-              marginBottom: "16px",
-              color: "#9be597",
-            }}
+            className="notice notice-success"
+            role="status"
+            style={{ marginBottom: "16px" }}
           >
             Password changed. You can sign in with your new password now.
           </div>
-          <Link
-            href="/signin"
-            style={{
-              color: "#f4f1ea",
-              fontSize: "14px",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
-          >
+          <Link href="/signin" className="link" style={{ fontSize: "15px" }}>
             → Sign in
           </Link>
         </>
@@ -141,51 +112,28 @@ function ResetPasswordForm() {
 
       {token && status.kind !== "ok" && (
         <>
-          <div style={{ marginBottom: "14px" }}>
-            <label
-              style={{
-                display: "block",
-                color: "#aaa",
-                marginBottom: "6px",
-                fontSize: "14px",
-              }}
-            >
+          <div className="field" style={{ marginBottom: "18px" }}>
+            <label className="label" htmlFor="reset-new-password">
               New password
             </label>
             <input
+              id="reset-new-password"
+              className="input"
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               autoComplete="new-password"
-              style={{
-                width: "100%",
-                padding: "14px",
-                borderRadius: "12px",
-                border: "1px solid #333",
-                background: "#1a1a1a",
-                color: "white",
-                boxSizing: "border-box",
-              }}
             />
-            <div
-              style={{ color: "#777", fontSize: "12px", marginTop: "6px" }}
-            >
-              8-128 characters.
-            </div>
+            <div className="hint">8-128 characters.</div>
           </div>
 
-          <div style={{ marginBottom: "20px" }}>
-            <label
-              style={{
-                display: "block",
-                color: "#aaa",
-                marginBottom: "6px",
-                fontSize: "14px",
-              }}
-            >
+          <div className="field" style={{ marginBottom: "24px" }}>
+            <label className="label" htmlFor="reset-confirm-password">
               Confirm new password
             </label>
             <input
+              id="reset-confirm-password"
+              className="input"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -193,27 +141,14 @@ function ResetPasswordForm() {
                 if (e.key === "Enter") submit();
               }}
               autoComplete="new-password"
-              style={{
-                width: "100%",
-                padding: "14px",
-                borderRadius: "12px",
-                border: "1px solid #333",
-                background: "#1a1a1a",
-                color: "white",
-                boxSizing: "border-box",
-              }}
             />
           </div>
 
           {status.kind === "error" && (
             <div
-              style={{
-                background: "#1f1f1f",
-                padding: "12px",
-                borderRadius: "12px",
-                marginBottom: "16px",
-                color: "#ff8080",
-              }}
+              className="notice notice-error"
+              role="alert"
+              style={{ marginBottom: "16px" }}
             >
               {status.message}
             </div>
@@ -222,19 +157,8 @@ function ResetPasswordForm() {
           <button
             onClick={submit}
             disabled={status.kind === "submitting"}
-            style={{
-              width: "100%",
-              padding: "14px",
-              borderRadius: "12px",
-              border: "none",
-              background:
-                status.kind === "submitting" ? "#555" : "#f4f1ea",
-              color: status.kind === "submitting" ? "#aaa" : "#0a0a0a",
-              cursor:
-                status.kind === "submitting" ? "not-allowed" : "pointer",
-              fontWeight: "bold",
-              marginBottom: "20px",
-            }}
+            className="btn btn-primary btn-lg btn-block"
+            style={{ marginBottom: "4px" }}
           >
             {status.kind === "submitting"
               ? "Setting password…"
@@ -243,16 +167,8 @@ function ResetPasswordForm() {
         </>
       )}
 
-      <div style={{ textAlign: "center", marginTop: "20px" }}>
-        <Link
-          href="/signin"
-          style={{
-            color: "#aaa",
-            fontSize: "14px",
-            textDecoration: "underline",
-            textUnderlineOffset: "3px",
-          }}
-        >
+      <div style={{ textAlign: "center", marginTop: "24px" }}>
+        <Link href="/signin" className="link" style={{ fontSize: "15px" }}>
           ← Back to sign in
         </Link>
       </div>
@@ -262,15 +178,17 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: "#f4f1ea",
-        padding: "24px",
-      }}
-    >
-      <Suspense fallback={<div style={{ color: "#aaa" }}>Loading…</div>}>
+    <main className="page">
+      <Suspense
+        fallback={
+          <div
+            className="container-xs meta"
+            style={{ paddingTop: "clamp(40px,8vw,96px)" }}
+          >
+            Loading…
+          </div>
+        }
+      >
         <ResetPasswordForm />
       </Suspense>
     </main>

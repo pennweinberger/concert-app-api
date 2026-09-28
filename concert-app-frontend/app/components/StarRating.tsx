@@ -2,8 +2,8 @@
 
 /**
  * Read-only 5-star rating display. Filled stars for the given rating,
- * muted stars for the remainder. Used on review cards across home, show,
- * artist, and user-profile pages.
+ * light-grey stars for the remainder. Used on review cards across home,
+ * show, artist, and user-profile pages.
  *
  * The interactive star picker on /review/new and the inline edit form
  * are NOT this component — they have their own click handlers and live
@@ -12,36 +12,33 @@
 type Props = {
   rating: number;
   size?: number;
-  /** Filled-star color. Defaults to the original gold used on show/
-   *  artist/profile pages; the editorial feed passes a monochrome cream. */
-  filledColor?: string;
-  emptyColor?: string;
 };
 
-export default function StarRating({
-  rating,
-  size = 14,
-  filledColor = "#fbbf24",
-  emptyColor = "#444",
-}: Props) {
+// Shared with the interactive pickers so every star on the site matches.
+export const STAR_PATH =
+  "M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z";
+
+export default function StarRating({ rating, size = 15 }: Props) {
   return (
     <div
-      style={{
-        display: "inline-flex",
-        gap: "2px",
-        fontSize: `${size}px`,
-        lineHeight: 1,
-      }}
+      role="img"
       aria-label={`${rating} out of 5 stars`}
+      style={{ display: "inline-flex", gap: "2px", lineHeight: 0 }}
     >
       {[1, 2, 3, 4, 5].map((n) => (
-        <span
+        <svg
           key={n}
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
           aria-hidden="true"
-          style={{ color: n <= rating ? filledColor : emptyColor }}
+          style={{ display: "block" }}
         >
-          ★
-        </span>
+          <path
+            d={STAR_PATH}
+            fill={n <= rating ? "var(--ink)" : "var(--disabled)"}
+          />
+        </svg>
       ))}
     </div>
   );

@@ -42,25 +42,15 @@ export default function NotificationBell() {
       aria-label={
         count > 0 ? `Notifications, ${count} unread` : "Notifications"
       }
-      style={{
-        position: "relative",
-        background: "none",
-        border: "none",
-        padding: 0,
-        cursor: "pointer",
-        color: "#9a9a9a",
-        lineHeight: 1,
-        display: "inline-flex",
-        alignItems: "center",
-      }}
+      className="icon-btn"
     >
       <svg
-        width="18"
-        height="18"
+        width="19"
+        height="19"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.7"
+        strokeWidth="1.9"
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden="true"
@@ -73,16 +63,18 @@ export default function NotificationBell() {
         <span
           style={{
             position: "absolute",
-            top: "-6px",
-            right: "-8px",
-            background: "#f4f1ea",
-            color: "#0a0a0a",
+            top: "4px",
+            right: "2px",
+            background: "var(--accent-ink)",
+            color: "#fff",
             borderRadius: "999px",
+            border: "2px solid var(--bg)",
             fontSize: "10px",
             fontWeight: 700,
-            minWidth: "16px",
-            height: "16px",
+            minWidth: "18px",
+            height: "18px",
             padding: "0 4px",
+            boxSizing: "border-box",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",

@@ -26,13 +26,6 @@ type CommentItem = {
 type Props = {
   reviewId: string;
   initialCount: number;
-  /**
-   * "default" keeps the original trigger (💬 text link) used on the
-   * user/artist pages. "editorial" renders a restrained monochrome
-   * outline-icon trigger that sits in a ReviewItem action row (show
-   * page / Phase 2 design). Thread behavior is identical in both.
-   */
-  variant?: "default" | "editorial";
 };
 
 // Flat comments under a single review. Collapsed by default to keep
@@ -40,12 +33,10 @@ type Props = {
 // paginated list plus a composer for signed-in users.
 //
 // Visually lighter than reviews: smaller font, no stars, no avatar
-// background fill — these are commentary, not first-class content.
-export default function CommentsSection({
-  reviewId,
-  initialCount,
-  variant = "default",
-}: Props) {
+// background fill — these are commentary, not first-class content. The
+// trigger is a low-emphasis text action that sits in a ReviewItem action
+// row alongside the like button.
+export default function CommentsSection({ reviewId, initialCount }: Props) {
   const authUser = useAuthUser();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<CommentItem[]>([]);
@@ -192,8 +183,10 @@ export default function CommentsSection({
 
   const viewerHandle = authUser?.handle ?? null;
 
+  const composerEmpty = composer.trim().length === 0;
+
   return (
-    <div style={{ marginTop: variant === "editorial" ? 0 : "12px" }}>
+    <div>
       <VerifyToPublishModal
         open={showVerify}
         kind="comment"
@@ -201,133 +194,94 @@ export default function CommentsSection({
         onRetry={() => submit()}
         retrying={submitting}
       />
-      {variant === "editorial" ? (
-        <button
-          onClick={toggle}
-          aria-expanded={open}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#6a6a6a",
-            cursor: "pointer",
-            fontSize: "13px",
-            padding: 0,
-            fontFamily: "inherit",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "7px",
-            lineHeight: 1,
-            // This inline-flex button sits inside a block wrapper that
-            // inherits a 24px line-height, so baseline alignment would
-            // drop it ~3px below the sibling like button (which is a
-            // direct flex child and never enters a line box). Align to
-            // the top of the line box so the two icons line up.
-            verticalAlign: "top",
-          }}
+      <button
+        onClick={toggle}
+        aria-expanded={open}
+        className="text-action"
+        // This inline-flex button sits inside a block wrapper that
+        // inherits the body line-height, so baseline alignment would drop
+        // it below the sibling like button (a direct flex child that never
+        // enters a line box). Align to the top so the two icons line up.
+        style={{ verticalAlign: "top", lineHeight: 1 }}
+      >
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.9"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={{ display: "block" }}
         >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-            style={{ display: "block" }}
-          >
-            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-          </svg>
-          <span>
-            {open
-              ? "Hide"
-              : count === 0
-                ? "Add a comment"
-                : `${count} ${count === 1 ? "comment" : "comments"}`}
-          </span>
-        </button>
-      ) : (
-        <button
-          onClick={toggle}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#aaa",
-            cursor: "pointer",
-            fontSize: "13px",
-            padding: "4px 0",
-            textAlign: "left",
-          }}
-        >
-          💬{" "}
-          {count === 0
-            ? open
-              ? "Hide"
-              : "Add a comment"
-            : `${count} ${count === 1 ? "comment" : "comments"}`}
-          {count > 0 ? (open ? " — Hide" : " — View") : ""}
-        </button>
-      )}
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+        </svg>
+        <span>
+          {open
+            ? "Hide"
+            : count === 0
+              ? "Add a comment"
+              : `${count} ${count === 1 ? "comment" : "comments"}`}
+        </span>
+      </button>
 
       {open && (
-        <div
-          style={{
-            marginTop: "8px",
-            paddingLeft: "12px",
-            borderLeft: "2px solid #1f1f1f",
-          }}
-        >
+        <div style={{ marginTop: "12px" }}>
           {loading && !loaded && (
-            <div style={{ color: "#777", fontSize: "13px", padding: "4px 0" }}>
+            <div className="meta" style={{ padding: "4px 0 10px" }}>
               Loading…
             </div>
           )}
 
           {loaded && items.length === 0 && (
-            <div
-              style={{ color: "#777", fontSize: "13px", padding: "4px 0 8px" }}
-            >
+            <div className="meta" style={{ padding: "4px 0 10px" }}>
               No comments yet.
             </div>
           )}
 
-          {items.map((c) => {
+          {items.map((c, i) => {
             const deleted = isDeletedHandle(c.userHandle);
             const owned = viewerHandle === c.userHandle && !deleted;
             return (
               <div
                 key={c.id}
                 style={{
-                  padding: "8px 0",
-                  borderBottom: "1px solid #161616",
-                  fontSize: "13px",
+                  padding: "12px 0",
+                  borderTop: i === 0 ? "none" : "1px solid var(--line-soft)",
+                  fontSize: "14.5px",
+                  lineHeight: 1.5,
                 }}
               >
                 <div
                   style={{
                     display: "flex",
-                    alignItems: "baseline",
-                    gap: "8px",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "4px 10px",
                     marginBottom: "4px",
+                    minHeight: "32px",
                   }}
                 >
                   {deleted ? (
-                    <span style={{ color: "#888" }}>{DELETED_USER_LABEL}</span>
+                    <span style={{ fontSize: "14px", color: "var(--muted)" }}>
+                      {DELETED_USER_LABEL}
+                    </span>
                   ) : (
                     <Link
                       href={`/user/${c.userHandle}`}
+                      className="link-quiet"
                       style={{
-                        color: "#f4f1ea",
-                        textDecoration: "underline",
-                        textUnderlineOffset: "3px",
-                        fontWeight: "bold",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        color: "var(--ink)",
                       }}
                     >
                       @{c.userHandle}
                     </Link>
                   )}
-                  <span style={{ color: "#666", fontSize: "12px" }}>
+                  <span className="meta" style={{ fontSize: "13px" }}>
                     {new Date(c.createdAt).toLocaleString(undefined, {
                       year: "numeric",
                       month: "short",
@@ -345,15 +299,8 @@ export default function CommentsSection({
                     <button
                       onClick={() => setPendingDeleteId(c.id)}
                       aria-label="Delete your comment"
-                      style={{
-                        marginLeft: "auto",
-                        background: "transparent",
-                        border: "none",
-                        color: "#888",
-                        cursor: "pointer",
-                        fontSize: "12px",
-                        padding: "2px 6px",
-                      }}
+                      className="text-action"
+                      style={{ marginLeft: "auto" }}
                     >
                       Delete
                     </button>
@@ -367,7 +314,7 @@ export default function CommentsSection({
                         gap: "8px",
                       }}
                     >
-                      <span style={{ color: "#aaa", fontSize: "12px" }}>
+                      <span className="meta" style={{ fontSize: "13px" }}>
                         Delete this comment?
                       </span>
                       <button
@@ -375,36 +322,22 @@ export default function CommentsSection({
                           await remove(c.id);
                           setPendingDeleteId(null);
                         }}
-                        style={{
-                          background: "transparent",
-                          border: "1px solid #ff8080",
-                          color: "#ff8080",
-                          padding: "2px 8px",
-                          borderRadius: "999px",
-                          cursor: "pointer",
-                          fontSize: "12px",
-                        }}
+                        className="btn btn-danger btn-sm"
+                        style={{ height: "32px" }}
                       >
                         Confirm
                       </button>
                       <button
                         onClick={() => setPendingDeleteId(null)}
-                        style={{
-                          background: "transparent",
-                          border: "1px solid #555",
-                          color: "#aaa",
-                          padding: "2px 8px",
-                          borderRadius: "999px",
-                          cursor: "pointer",
-                          fontSize: "12px",
-                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{ height: "32px" }}
                       >
                         Cancel
                       </button>
                     </div>
                   )}
                 </div>
-                <div style={{ color: "#f4f1ea", whiteSpace: "pre-wrap" }}>
+                <div style={{ color: "var(--ink)", whiteSpace: "pre-wrap" }}>
                   {c.body}
                 </div>
               </div>
@@ -415,16 +348,8 @@ export default function CommentsSection({
             <button
               onClick={loadMore}
               disabled={loading}
-              style={{
-                background: "transparent",
-                border: "1px solid #2a2a2a",
-                color: "#aaa",
-                padding: "6px 12px",
-                borderRadius: "999px",
-                cursor: loading ? "not-allowed" : "pointer",
-                fontSize: "12px",
-                marginTop: "8px",
-              }}
+              className="btn btn-secondary btn-sm"
+              style={{ marginTop: "8px" }}
             >
               {loading ? "Loading…" : "Load more"}
             </button>
@@ -443,52 +368,24 @@ export default function CommentsSection({
               maxLength={2000}
               rows={2}
               disabled={submitting}
-              style={{
-                width: "100%",
-                padding: "10px",
-                borderRadius: "10px",
-                border: "1px solid #2a2a2a",
-                background: "#101010",
-                color: "white",
-                fontSize: "13px",
-                resize: "vertical",
-                boxSizing: "border-box",
-                fontFamily: "inherit",
-              }}
+              className="input"
+              style={{ minHeight: "84px", fontSize: "15px" }}
             />
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginTop: "6px",
+                marginTop: "10px",
               }}
             >
-              <span style={{ color: "#555", fontSize: "11px" }}>
+              <span className="meta" style={{ fontSize: "12.5px" }}>
                 {composer.length}/2000
               </span>
               <button
                 onClick={submit}
-                disabled={submitting || composer.trim().length === 0}
-                style={{
-                  background:
-                    submitting || composer.trim().length === 0
-                      ? "#333"
-                      : "#f4f1ea",
-                  color:
-                    submitting || composer.trim().length === 0
-                      ? "#888"
-                      : "#0a0a0a",
-                  border: "none",
-                  padding: "6px 14px",
-                  borderRadius: "999px",
-                  cursor:
-                    submitting || composer.trim().length === 0
-                      ? "not-allowed"
-                      : "pointer",
-                  fontSize: "12px",
-                  fontWeight: "bold",
-                }}
+                disabled={submitting || composerEmpty}
+                className="btn btn-primary btn-sm"
               >
                 {authUser ? (submitting ? "Posting…" : "Post") : "Sign in"}
               </button>
@@ -497,11 +394,8 @@ export default function CommentsSection({
 
           {error && (
             <div
-              style={{
-                color: "#ff8080",
-                fontSize: "12px",
-                marginTop: "6px",
-              }}
+              className="notice notice-error"
+              style={{ marginTop: "10px", fontSize: "13.5px" }}
             >
               {error}
             </div>
