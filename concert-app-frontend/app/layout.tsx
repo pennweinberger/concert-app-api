@@ -3,6 +3,7 @@ import { Inter, Jost } from "next/font/google";
 import "./globals.css";
 import VerifyEmailBanner from "./components/VerifyEmailBanner";
 import PendingDeletionBanner from "./components/PendingDeletionBanner";
+import SiteFooter from "./components/SiteFooter";
 
 // Workhorse sans for body, UI, secondary headings, and stats.
 const inter = Inter({
@@ -40,6 +41,7 @@ export default function RootLayout({
         <PendingDeletionBanner />
         <VerifyEmailBanner />
         {children}
+        <SiteFooter />
       </body>
     </html>
   );
