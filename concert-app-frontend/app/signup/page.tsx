@@ -1,7 +1,11 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import TurnstileWidget from "../components/TurnstileWidget";
+import { Suspense, useRef, useState } from "react";
+import TurnstileWidget, {
+  getTurnstileSiteKey,
+  isTurnstileRequired,
+  type TurnstileHandle,
+} from "../components/TurnstileWidget";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { setSession } from "../lib/auth";
@@ -19,12 +23,24 @@ function SignUpForm() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Turnstile token. Stays null when Cloudflare isn't configured or the
-  // widget failed to load; the server fails open in both cases, so we
-  // never block submission on it client-side.
+  // Turnstile token. When Turnstile is configured the server rejects any
+  // request without a valid one, so the form can't be submitted until the
+  // widget has produced a token. Tokens are single-use: the server spends
+  // one on every submission, so any failed attempt resets the widget.
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
+  const awaitingVerification = isTurnstileRequired() && !turnstileToken;
 
   async function submit() {
+    if (submitting) return;
+    if (awaitingVerification) {
+      // With no site key the widget is already showing why sign-up is
+      // unavailable; there is nothing for the user to complete.
+      if (getTurnstileSiteKey()) {
+        setError("Please complete the verification below first.");
+      }
+      return;
+    }
     const cleanedHandle = handle.trim().replace(/^@/, "");
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(cleanedHandle)) {
       setError("Handle must be 3-20 chars: letters, numbers, underscore.");
@@ -42,6 +58,7 @@ function SignUpForm() {
 
     setSubmitting(true);
     setError(null);
+    let signedUp = false;
     try {
       const res = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
@@ -60,9 +77,12 @@ function SignUpForm() {
           setError(
             data.message || "Please complete the verification and try again.",
           );
-          return;
-        }
-        if (res.status === 409) {
+        } else if (data.error === "captcha_unavailable") {
+          setError(
+            data.message ||
+              "Sign-up is temporarily unavailable. Please try again shortly.",
+          );
+        } else if (res.status === 409) {
           const msg = (data?.error as string | undefined) ?? "";
           if (msg.toLowerCase().includes("email")) {
             setError("That email is already in use. Sign in instead?");
@@ -73,25 +93,33 @@ function SignUpForm() {
           }
         } else {
           setError(
-            data?.error || "Sign up failed. Try again in a moment.",
+            data?.message ||
+              data?.error ||
+              "Sign up failed. Try again in a moment.",
           );
         }
-        setSubmitting(false);
         return;
       }
 
       const data = await res.json();
       if (!data?.token || !data?.user) {
         setError("Server did not return a valid session.");
-        setSubmitting(false);
         return;
       }
 
+      signedUp = true;
       setSession(data.token, data.user);
       router.replace(next);
     } catch {
       setError("Network error. Try again.");
-      setSubmitting(false);
+    } finally {
+      // Every path that doesn't end in a session must leave the form
+      // usable again — and must discard the token the server just spent,
+      // or the retry would be rejected as a duplicate.
+      if (!signedUp) {
+        setSubmitting(false);
+        turnstileRef.current?.reset();
+      }
     }
   }
 
@@ -171,10 +199,10 @@ function SignUpForm() {
         </div>
       )}
 
-      <TurnstileWidget onToken={setTurnstileToken} />
+      <TurnstileWidget ref={turnstileRef} onToken={setTurnstileToken} />
       <button
         onClick={submit}
-        disabled={submitting}
+        disabled={submitting || awaitingVerification}
         className="btn btn-primary btn-lg btn-block"
         style={{ marginBottom: "24px" }}
       >
