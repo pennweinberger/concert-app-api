@@ -13,6 +13,7 @@ import LoadMore from "../../components/LoadMore";
 import ReviewSurface from "../../components/ReviewSurface";
 import SegmentedTabs from "../../components/SegmentedTabs";
 import { STAR_PATH } from "../../components/StarRating";
+import { formatShowDate } from "../../lib/dateFormat";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -157,12 +158,7 @@ export default function ShowPage() {
   }, [show, sort]);
 
   const dateLabel = show
-    ? new Date(show.localDate).toLocaleDateString(undefined, {
-        weekday: "short",
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
+    ? formatShowDate(show.localDate, { weekday: true, alwaysYear: true })
     : "";
 
   return (
