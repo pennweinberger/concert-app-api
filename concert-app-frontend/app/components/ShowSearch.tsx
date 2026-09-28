@@ -98,10 +98,13 @@ function rankAndSort(items: MergedItem[]): MergedItem[] {
 }
 
 export default function ShowSearch({
-  fullWidth = false,
+  variant = "page",
 }: {
-  fullWidth?: boolean;
+  /** "header" = compact field in the masthead; "page" = full-size field
+   *  rendered in page content (the feed on mobile). */
+  variant?: "header" | "page";
 }) {
+  const compact = variant === "header";
   const router = useRouter();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<MergedItem[]>([]);
@@ -251,114 +254,85 @@ export default function ShowSearch({
   const showDropdown = open && q.trim().length >= MIN_QUERY_CHARS;
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        position: "relative",
-        maxWidth: fullWidth ? "100%" : 560,
-        margin: fullWidth ? "0" : "0 auto 24px",
-      }}
-    >
-      {fullWidth && (
-        <span
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            left: 15,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "#6f6f6f",
-            pointerEvents: "none",
-            display: "inline-flex",
-          }}
+    <div ref={containerRef} style={{ position: "relative", width: "100%" }}>
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          left: compact ? 13 : 16,
+          top: "50%",
+          transform: "translateY(-50%)",
+          color: "var(--muted)",
+          pointerEvents: "none",
+          display: "inline-flex",
+        }}
+      >
+        <svg
+          width={compact ? 16 : 18}
+          height={compact ? 16 : 18}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         >
-          <svg
-            width="17"
-            height="17"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="M21 21l-4.3-4.3" />
-          </svg>
-        </span>
-      )}
+          <circle cx="11" cy="11" r="7" />
+          <path d="M20 20l-3.5-3.5" />
+        </svg>
+      </span>
       <input
+        type="search"
+        aria-label="Search artists, shows, venues"
+        className="input"
         value={q}
         onChange={(e) => {
           setQ(e.target.value);
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
-        placeholder={
-          fullWidth
-            ? "Search artists, shows, venues"
-            : "Find a show — artist, venue, or city"
-        }
+        placeholder="Search artists, shows, venues"
         autoComplete="off"
         spellCheck={false}
-        style={{
-          width: "100%",
-          padding: fullWidth ? "13px 18px 13px 44px" : "12px 14px",
-          // Pill on the feed (editorial treatment); the compact variant
-          // used elsewhere keeps its original rounded-rect.
-          borderRadius: fullWidth ? "26px" : "12px",
-          border: "1px solid #2a2a2a",
-          background: "#141414",
-          color: "#f4f1ea",
-          fontSize: "15px",
-          boxSizing: "border-box",
-        }}
+        style={
+          compact
+            ? { height: 40, paddingLeft: 38, fontSize: 14.5, borderRadius: 12 }
+            : { height: 48, paddingLeft: 44 }
+        }
       />
 
       {showDropdown && (
         <div
+          className="menu"
           style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
+            top: "calc(100% + 8px)",
             left: 0,
             right: 0,
-            background: "#0e0e0e",
-            border: "1px solid #2a2a2a",
-            borderRadius: "12px",
             maxHeight: "480px",
             overflowY: "auto",
-            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
-            zIndex: 50,
+            padding: 6,
           }}
         >
           {loading && results.length === 0 && (
             <div
-              style={{ padding: "16px", color: "#777", fontSize: "14px" }}
+              style={{ padding: "14px 12px", color: "var(--muted)", fontSize: "14px" }}
             >
               Searching…
             </div>
           )}
 
           {!loading && results.length === 0 && (
-            <div
-              style={{ padding: "16px", color: "#aaa", fontSize: "14px" }}
-            >
+            <div style={{ padding: "14px 12px", fontSize: "14.5px" }}>
               No shows matching &ldquo;{q.trim()}&rdquo; yet.
               <div
                 style={{
                   marginTop: 6,
-                  color: "#777",
-                  fontSize: "13px",
+                  color: "var(--muted)",
+                  fontSize: "13.5px",
                 }}
               >
                 If you attended this show,{" "}
-                <a
-                  href="/review/new"
-                  style={{
-                    color: "#f4f1ea",
-                    textDecoration: "underline",
-                  }}
-                >
+                <a href="/review/new" className="link">
                   write a review
                 </a>{" "}
                 to add it.
@@ -387,23 +361,20 @@ export default function ShowSearch({
                 key={key}
                 onClick={() => onItemClick(item)}
                 disabled={isPromoting}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  background: "transparent",
-                  border: "none",
-                  borderBottom: "1px solid #161616",
-                  padding: "12px 14px",
-                  cursor: isPromoting ? "wait" : "pointer",
-                  color: "#f4f1ea",
-                  fontSize: "14px",
-                }}
+                className="menu-item"
+                style={{ cursor: isPromoting ? "wait" : "pointer" }}
               >
-                <div style={{ fontWeight: "bold", marginBottom: 2 }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    fontSize: "15px",
+                    letterSpacing: "-0.01em",
+                    marginBottom: 2,
+                  }}
+                >
                   {item.artistName}
                 </div>
-                <div style={{ color: "#aaa", fontSize: "13px" }}>
+                <div style={{ color: "var(--muted)", fontSize: "13.5px", fontWeight: 400 }}>
                   {item.venueName}
                   {item.city ? ` · ${item.city}` : ""}
                   {" · "}
@@ -413,8 +384,9 @@ export default function ShowSearch({
                   (item.reviewCount > 0 || item.attendanceCount > 0) && (
                     <div
                       style={{
-                        color: "#777",
-                        fontSize: "12px",
+                        color: "var(--muted)",
+                        fontSize: "12.5px",
+                        fontWeight: 400,
                         marginTop: 4,
                       }}
                     >
@@ -427,8 +399,9 @@ export default function ShowSearch({
                 {isPromoting && (
                   <div
                     style={{
-                      color: "#aaa",
-                      fontSize: "12px",
+                      color: "var(--muted)",
+                      fontSize: "12.5px",
+                      fontWeight: 400,
                       marginTop: 4,
                     }}
                   >
@@ -441,11 +414,8 @@ export default function ShowSearch({
 
           {error && (
             <div
-              style={{
-                padding: "12px 14px",
-                color: "#ff8080",
-                fontSize: "13px",
-              }}
+              className="notice notice-error"
+              style={{ margin: 6, fontSize: "13.5px" }}
             >
               {error}
             </div>

@@ -1,10 +1,10 @@
 import Link from "next/link";
 
-// The site's only footer: two legal links, nothing else.
+// The site's only footer: copyright and two legal links, nothing else.
 //
-// Rendered once from the root layout, after {children}. Every page's
-// <main> is minHeight 100vh, so this sits just past the fold and scrolls
-// into view rather than competing with page content. Deliberately not a
+// Rendered once from the root layout, after {children}. Pages grow to
+// fill the viewport (.page / .band), so this sits at the bottom of short
+// pages rather than floating mid-screen. Deliberately not a
 // navigation system — the masthead and per-page back links remain the way
 // around the site.
 //
@@ -13,29 +13,32 @@ export default function SiteFooter() {
   return (
     <footer
       style={{
-        background: "#0a0a0a",
-        borderTop: "1px solid #1c1c1c",
-        padding: "20px 24px",
-        display: "flex",
-        justifyContent: "center",
-        gap: "16px",
+        background: "var(--surface)",
+        borderTop: "1px solid var(--line)",
         fontSize: "13px",
-        color: "#8f8f8f",
+        color: "var(--muted)",
       }}
     >
-      <Link
-        href="/terms"
-        style={{ color: "#8f8f8f", textDecoration: "none" }}
+      <div
+        className="container"
+        style={{
+          padding: "28px var(--gutter)",
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+          gap: "12px 24px",
+        }}
       >
-        Terms
-      </Link>
-      <span aria-hidden="true">·</span>
-      <Link
-        href="/privacy"
-        style={{ color: "#8f8f8f", textDecoration: "none" }}
-      >
-        Privacy
-      </Link>
+        <span>© {new Date().getFullYear()} Afterset</span>
+        <nav aria-label="Legal" style={{ display: "flex", gap: "22px" }}>
+          <Link href="/terms" className="link-quiet">
+            Terms
+          </Link>
+          <Link href="/privacy" className="link-quiet">
+            Privacy
+          </Link>
+        </nav>
+      </div>
     </footer>
   );
 }

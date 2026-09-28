@@ -2,17 +2,45 @@ import Link from "next/link";
 
 // Shared chrome and typography for the public legal pages (/terms,
 // /privacy). Both documents are long-form reading rather than app UI, so
-// they get a slightly larger body size and generous line height — but the
-// page shell, palette and display face are the ones every other page uses.
+// they get a narrow column, a larger body size and generous line height —
+// but the page shell, palette and type scale are the ones every other page
+// uses.
 //
 // The copy is supplied as data rather than written inline as JSX. Legal
 // text must be reproduced exactly, and passing it through JSX text nodes
 // invites silent mangling of quotes and apostrophes by escaping rules and
 // formatters. Strings in an array render verbatim.
 
-const CREAM = "#f4f1ea";
-const BODY = "#cfccc4";
-const MUTED = "#8f8f8f";
+function BackToFeed() {
+  return (
+    <Link
+      href="/"
+      className="link"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "2px",
+        minHeight: "40px",
+        fontSize: "15px",
+      }}
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M15 5l-7 7 7 7" />
+      </svg>
+      Back to feed
+    </Link>
+  );
+}
 
 export type LegalListItem =
   | string
@@ -39,44 +67,23 @@ export default function LegalDocument({
   blocks: LegalBlock[];
 }) {
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: CREAM,
-        padding: "24px",
-      }}
-    >
-      <div style={{ maxWidth: "700px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "20px" }}>
-          <Link
-            href="/"
-            style={{
-              color: CREAM,
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
-          >
-            ← Back to feed
-          </Link>
-        </div>
+    <main className="page">
+      <div
+        className="container-sm"
+        style={{ paddingTop: "20px", paddingBottom: "clamp(48px, 8vw, 96px)" }}
+      >
+        <BackToFeed />
 
-        <h1
-          style={{
-            fontSize: "30px",
-            lineHeight: 1.2,
-            marginBottom: "8px",
-            fontFamily: "var(--font-display), sans-serif",
-            fontWeight: 600,
-          }}
+        <header style={{ paddingTop: "16px", marginBottom: "40px" }}>
+          <h1 className="h1">{title}</h1>
+          <p className="meta" style={{ margin: "14px 0 0" }}>
+            {effectiveDate}
+          </p>
+        </header>
+
+        <div
+          style={{ fontSize: "17px", lineHeight: 1.65, color: "var(--ink-2)" }}
         >
-          {title}
-        </h1>
-        <p style={{ color: MUTED, fontSize: "14px", marginBottom: "36px" }}>
-          {effectiveDate}
-        </p>
-
-        <div style={{ fontSize: "16px", lineHeight: 1.7, color: BODY }}>
           {blocks.map((block, i) => (
             <Block key={i} block={block} />
           ))}
@@ -84,22 +91,12 @@ export default function LegalDocument({
 
         <div
           style={{
-            marginTop: "48px",
-            paddingTop: "20px",
-            borderTop: "1px solid #222",
-            fontSize: "14px",
+            marginTop: "56px",
+            paddingTop: "16px",
+            borderTop: "1px solid var(--line)",
           }}
         >
-          <Link
-            href="/"
-            style={{
-              color: MUTED,
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
-          >
-            ← Back to feed
-          </Link>
+          <BackToFeed />
         </div>
       </div>
     </main>
@@ -111,13 +108,8 @@ function Block({ block }: { block: LegalBlock }) {
     case "h2":
       return (
         <h2
-          style={{
-            fontSize: "20px",
-            lineHeight: 1.35,
-            fontWeight: 600,
-            color: CREAM,
-            margin: "36px 0 12px",
-          }}
+          className="h3"
+          style={{ color: "var(--ink)", margin: "48px 0 14px" }}
         >
           {block.text}
         </h2>
@@ -126,22 +118,24 @@ function Block({ block }: { block: LegalBlock }) {
       return (
         <h3
           style={{
-            fontSize: "16px",
+            fontSize: "17px",
+            lineHeight: 1.35,
             fontWeight: 600,
-            color: CREAM,
-            margin: "24px 0 8px",
+            letterSpacing: "-0.015em",
+            color: "var(--ink)",
+            margin: "28px 0 8px",
           }}
         >
           {block.text}
         </h3>
       );
     case "p":
-      return <p style={{ margin: "0 0 14px" }}>{block.text}</p>;
+      return <p style={{ margin: "0 0 16px" }}>{block.text}</p>;
     case "ul":
       return (
         <ul
           style={{
-            margin: "0 0 14px",
+            margin: "0 0 16px",
             paddingLeft: "22px",
             listStyle: "disc",
           }}
@@ -156,11 +150,7 @@ function Block({ block }: { block: LegalBlock }) {
                     href={item.href}
                     target="_blank"
                     rel="noreferrer"
-                    style={{
-                      color: CREAM,
-                      textDecoration: "underline",
-                      textUnderlineOffset: "3px",
-                    }}
+                    className="link"
                   >
                     {item.linkLabel}
                   </a>
@@ -173,7 +163,7 @@ function Block({ block }: { block: LegalBlock }) {
       );
     case "address":
       return (
-        <p style={{ margin: "0 0 14px" }}>
+        <p style={{ margin: "0 0 16px" }}>
           {block.lines.map((line, i) => (
             <span key={i}>
               {line}
@@ -184,15 +174,11 @@ function Block({ block }: { block: LegalBlock }) {
       );
     case "email":
       return (
-        <p style={{ margin: "0 0 14px" }}>
+        <p style={{ margin: "0 0 16px" }}>
           {block.prefix}
           <a
             href={`mailto:${block.address}`}
-            style={{
-              color: CREAM,
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
+            className="link"
           >
             {block.address}
           </a>

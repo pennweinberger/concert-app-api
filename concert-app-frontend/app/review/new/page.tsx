@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { authHeaders, getToken, useAuthUser } from "../../lib/auth";
 import VerifyToPublishModal from "../../components/VerifyToPublishModal";
+import { STAR_PATH } from "../../components/StarRating";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -397,26 +398,11 @@ export default function NewReviewPage() {
   // isn't signed in, render a blank shell so signed-out visitors don't see
   // the form flash before the bounce to /signin.
   if (!authUser) {
-    return (
-      <main
-        style={{
-          background: "#0a0a0a",
-          minHeight: "100vh",
-          color: "#f4f1ea",
-        }}
-      />
-    );
+    return <main className="page" />;
   }
 
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: "#f4f1ea",
-        padding: "24px",
-      }}
-    >
+    <main className="page">
       <VerifyToPublishModal
         open={showVerify}
         kind="review"
@@ -424,91 +410,73 @@ export default function NewReviewPage() {
         onRetry={() => submit()}
         retrying={submitting}
       />
-      <div style={{ maxWidth: "700px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "20px" }}>
-          <Link
-            href="/"
-            style={{
-              color: "#f4f1ea",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
-          >
-            ← Back to feed
-          </Link>
-        </div>
-
-        <h1
+      <div
+        className="container-sm"
+        style={{ paddingTop: "20px", paddingBottom: "clamp(48px, 8vw, 96px)" }}
+      >
+        <Link
+          href="/"
+          className="link"
           style={{
-            fontSize: "30px",
-            marginBottom: "24px",
-            fontFamily: "var(--font-display), sans-serif",
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "2px",
+            minHeight: "40px",
+            fontSize: "15px",
           }}
         >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
+          Back to feed
+        </Link>
+
+        <h1 className="h1" style={{ margin: "16px 0 32px" }}>
           Write a review
         </h1>
 
         {/* Search step — visible when no show is selected */}
         {!selectedShow && (
           <>
-            <div style={{ color: "#aaa", marginBottom: "12px" }}>
-              Step 1: Find the show
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: "10px",
-                marginBottom: "20px",
-              }}
-            >
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") runSearch();
-                }}
-                placeholder="Search by artist or show..."
-                style={{
-                  flex: 1,
-                  padding: "14px",
-                  borderRadius: "12px",
-                  border: "1px solid #333",
-                  background: "#1a1a1a",
-                  color: "#f4f1ea",
-                }}
-              />
-              <button
-                onClick={runSearch}
-                disabled={searching || !query.trim()}
-                style={{
-                  padding: "14px 18px",
-                  borderRadius: "12px",
-                  border: "none",
-                  background:
-                    searching || !query.trim() ? "#555" : "#f4f1ea",
-                  color:
-                    searching || !query.trim() ? "#aaa" : "#0a0a0a",
-                  fontWeight: "bold",
-                  cursor:
-                    searching || !query.trim() ? "not-allowed" : "pointer",
-                }}
-              >
-                {searching ? "Searching…" : "Search"}
-              </button>
+            <div className="field">
+              <label className="label" htmlFor="review-show-search">
+                Step 1: Find the show
+              </label>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <input
+                  id="review-show-search"
+                  className="input"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") runSearch();
+                  }}
+                  placeholder="Search by artist or show..."
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <button
+                  onClick={runSearch}
+                  disabled={searching || !query.trim()}
+                  className="btn btn-secondary"
+                  style={{ height: "48px" }}
+                >
+                  {searching ? "Searching…" : "Search"}
+                </button>
+              </div>
             </div>
 
             {searched && results.length === 0 && !searching && (
-              <div
-                style={{
-                  background: "#1a1a1a",
-                  padding: "16px",
-                  borderRadius: "12px",
-                  color: "#aaa",
-                }}
-              >
+              <div className="notice notice-info" style={{ marginTop: "16px" }}>
                 No shows found for &ldquo;{query}&rdquo;.
               </div>
             )}
@@ -519,35 +487,47 @@ export default function NewReviewPage() {
                 render. DB rows come first and Ticketmaster rows are
                 soonest-first, so the cut only ever drops far-future
                 shows — and manual entry sits directly below for anything
-                that isn't here. */}
-            {results.slice(0, MAX_RESULTS).map((show) => (
-              <button
-                key={show.providerEventId}
-                onClick={() => selectShow(show)}
+                that isn't here. Styled like the ShowSearch dropdown, but
+                in-flow rather than a popover. */}
+            {results.length > 0 && (
+              <div
+                className="menu"
                 style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  background: "#1a1a1a",
-                  padding: "16px",
-                  borderRadius: "14px",
-                  border: "1px solid transparent",
-                  marginBottom: "12px",
-                  color: "#f4f1ea",
-                  cursor: "pointer",
+                  position: "static",
+                  marginTop: "16px",
+                  padding: 6,
+                  boxShadow: "var(--shadow-md)",
                 }}
               >
-                <div style={{ fontWeight: "bold", fontSize: "16px" }}>
-                  {show.artist}
-                </div>
-                <div style={{ color: "#bbb", marginTop: "4px" }}>
-                  {show.venue} • {show.city}
-                </div>
-                <div style={{ color: "#777", marginTop: "4px" }}>
-                  {show.localDate}
-                </div>
-              </button>
-            ))}
+                {results.slice(0, MAX_RESULTS).map((show) => (
+                  <button
+                    key={show.providerEventId}
+                    onClick={() => selectShow(show)}
+                    className="menu-item"
+                  >
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "15px",
+                        letterSpacing: "-0.01em",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {show.artist}
+                    </div>
+                    <div
+                      style={{
+                        color: "var(--muted)",
+                        fontSize: "13.5px",
+                        fontWeight: 400,
+                      }}
+                    >
+                      {show.venue} · {show.city} · {show.localDate}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Manual entry. Offered once a search has run — including when
                 it DID return results, since the right show may simply not
@@ -560,17 +540,16 @@ export default function NewReviewPage() {
                   setManualArtist(query.trim());
                   setManualError(null);
                 }}
+                className="link"
                 style={{
                   background: "none",
                   border: "none",
-                  padding: "4px 0",
-                  marginTop: results.length ? "6px" : "14px",
-                  color: "#8a8a8a",
-                  fontSize: "13.5px",
+                  padding: 0,
+                  minHeight: "40px",
+                  marginTop: "12px",
+                  fontSize: "14.5px",
                   fontFamily: "inherit",
                   cursor: "pointer",
-                  textDecoration: "underline",
-                  textUnderlineOffset: "3px",
                 }}
               >
                 Can&rsquo;t find it? Add the show yourself
@@ -578,159 +557,73 @@ export default function NewReviewPage() {
             )}
 
             {manualOpen && (
-              <div
-                style={{
-                  marginTop: "16px",
-                  padding: "16px",
-                  borderRadius: "14px",
-                  border: "1px solid rgba(226,140,60,0.45)",
-                  background:
-                    "linear-gradient(100deg, rgba(120,40,90,0.22), rgba(60,20,80,0.16))",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 600,
-                    marginBottom: "4px",
-                  }}
-                >
+              <div className="card card-outline" style={{ marginTop: "20px" }}>
+                <h2 className="h3" style={{ fontSize: "19px" }}>
                   Add the show
-                </div>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "#a9a295",
-                    marginBottom: "14px",
-                    lineHeight: 1.5,
-                  }}
-                >
+                </h2>
+                <p className="hint" style={{ margin: "6px 0 20px" }}>
                   We don&rsquo;t list every venue yet. Add the details and
                   we&rsquo;ll create it — if we already know the artist or
                   venue, yours joins the existing page.
-                </div>
+                </p>
 
-                {(
-                  [
-                    ["Artist", manualArtist, setManualArtist, "Hilary Duff"],
-                    ["Venue", manualVenue, setManualVenue, "Madison Square Garden"],
-                    ["City", manualCity, setManualCity, "New York"],
-                    ["State", manualState, setManualState, "NY"],
-                  ] as const
-                ).map(([label, value, setter, placeholder]) => (
-                  <label key={label} style={{ display: "block", marginBottom: "10px" }}>
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: "12.5px",
-                        color: "#8a8a8a",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      {label}
-                    </span>
+                <div className="stack" style={{ gap: "16px" }}>
+                  {(
+                    [
+                      ["Artist", manualArtist, setManualArtist, "Hilary Duff"],
+                      ["Venue", manualVenue, setManualVenue, "Madison Square Garden"],
+                      ["City", manualCity, setManualCity, "New York"],
+                      ["State", manualState, setManualState, "NY"],
+                    ] as const
+                  ).map(([label, value, setter, placeholder]) => (
+                    <label key={label} className="field">
+                      <span className="label">{label}</span>
+                      <input
+                        className="input"
+                        value={value}
+                        onChange={(e) => setter(e.target.value)}
+                        placeholder={placeholder}
+                        maxLength={label === "State" ? 2 : label === "City" ? 120 : 200}
+                      />
+                    </label>
+                  ))}
+
+                  <label className="field">
+                    <span className="label">Date</span>
                     <input
-                      value={value}
-                      onChange={(e) => setter(e.target.value)}
-                      placeholder={placeholder}
-                      maxLength={label === "State" ? 2 : label === "City" ? 120 : 200}
-                      style={{
-                        width: "100%",
-                        padding: "11px 12px",
-                        borderRadius: "10px",
-                        border: "1px solid #333",
-                        background: "#141414",
-                        color: "#f4f1ea",
-                        fontSize: "14.5px",
-                        fontFamily: "inherit",
-                        boxSizing: "border-box",
-                      }}
+                      type="date"
+                      className="input"
+                      value={manualDate}
+                      onChange={(e) => setManualDate(e.target.value)}
+                      // A review implies attendance, so future dates are
+                      // never valid here. Enforced again on submit, since
+                      // the max attribute alone is trivially bypassed.
+                      max={todayLocalISO()}
                     />
                   </label>
-                ))}
 
-                <label style={{ display: "block", marginBottom: "14px" }}>
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: "12.5px",
-                      color: "#8a8a8a",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Date
-                  </span>
-                  <input
-                    type="date"
-                    value={manualDate}
-                    onChange={(e) => setManualDate(e.target.value)}
-                    // A review implies attendance, so future dates are
-                    // never valid here. Enforced again on submit, since
-                    // the max attribute alone is trivially bypassed.
-                    max={todayLocalISO()}
-                    style={{
-                      width: "100%",
-                      padding: "11px 12px",
-                      borderRadius: "10px",
-                      border: "1px solid #333",
-                      background: "#141414",
-                      color: "#f4f1ea",
-                      fontSize: "14.5px",
-                      fontFamily: "inherit",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </label>
+                  {manualError && (
+                    <div className="notice notice-error">{manualError}</div>
+                  )}
 
-                {manualError && (
-                  <div
-                    style={{
-                      color: "#ff8080",
-                      fontSize: "13px",
-                      marginBottom: "10px",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {manualError}
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <button
+                      onClick={submitManualShow}
+                      disabled={manualSubmitting}
+                      className="btn btn-primary"
+                    >
+                      {manualSubmitting ? "Adding…" : "Add and review"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setManualOpen(false);
+                        setManualError(null);
+                      }}
+                      className="btn btn-ghost"
+                    >
+                      Cancel
+                    </button>
                   </div>
-                )}
-
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button
-                    onClick={submitManualShow}
-                    disabled={manualSubmitting}
-                    style={{
-                      padding: "10px 16px",
-                      borderRadius: "10px",
-                      border: "none",
-                      background: manualSubmitting ? "#555" : "#e0219b",
-                      color: manualSubmitting ? "#aaa" : "#fff",
-                      fontSize: "13.5px",
-                      fontWeight: 600,
-                      fontFamily: "inherit",
-                      cursor: manualSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {manualSubmitting ? "Adding…" : "Add and review"}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setManualOpen(false);
-                      setManualError(null);
-                    }}
-                    style={{
-                      padding: "10px 16px",
-                      borderRadius: "10px",
-                      border: "1px solid #333",
-                      background: "none",
-                      color: "#aaa",
-                      fontSize: "13.5px",
-                      fontFamily: "inherit",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Cancel
-                  </button>
                 </div>
               </div>
             )}
@@ -739,147 +632,133 @@ export default function NewReviewPage() {
 
         {/* Compose step — visible once a show is selected */}
         {selectedShow && (
-          <>
-            <div style={{ color: "#aaa", marginBottom: "12px" }}>
-              {preloadedShowId ? "Write your review" : "Step 2: Write your review"}
+          <div className="stack" style={{ gap: "28px" }}>
+            <div className="field">
+              <div className="label">
+                {preloadedShowId ? "Write your review" : "Step 2: Write your review"}
+              </div>
+
+              <div className="card card-outline" style={{ padding: "22px 24px" }}>
+                <div className="eyebrow">Reviewing</div>
+                <div
+                  style={{
+                    marginTop: "6px",
+                    fontSize: "22px",
+                    fontWeight: 700,
+                    letterSpacing: "-0.03em",
+                    lineHeight: 1.15,
+                  }}
+                >
+                  {selectedShow.artist}
+                </div>
+                <div
+                  style={{
+                    marginTop: "4px",
+                    fontSize: "15.5px",
+                    fontWeight: 500,
+                    color: "var(--ink-2)",
+                  }}
+                >
+                  {selectedShow.venue} · {selectedShow.city}
+                </div>
+                <div className="meta" style={{ marginTop: "2px" }}>
+                  {selectedShow.localDate}
+                </div>
+                <button
+                  onClick={clearSelection}
+                  className="link"
+                  style={{
+                    marginTop: "8px",
+                    minHeight: "36px",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    fontFamily: "inherit",
+                    fontSize: "14.5px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Change show
+                </button>
+              </div>
             </div>
 
-            <div
-              style={{
-                background: "#1a1a1a",
-                padding: "16px",
-                borderRadius: "14px",
-                marginBottom: "20px",
-                border: "1px solid #333",
-              }}
-            >
-              <div style={{ fontSize: "12px", color: "#7dff9b" }}>
-                Reviewing
+            <div className="field">
+              <div className="label" id="review-rating-label">
+                Rating
               </div>
               <div
-                style={{
-                  fontWeight: "bold",
-                  fontSize: "18px",
-                  marginTop: "4px",
-                }}
+                role="group"
+                aria-labelledby="review-rating-label"
+                style={{ display: "flex", gap: "2px", marginLeft: "-6px" }}
               >
-                {selectedShow.artist}
-              </div>
-              <div style={{ color: "#bbb", marginTop: "4px" }}>
-                {selectedShow.venue} • {selectedShow.city}
-              </div>
-              <div style={{ color: "#777", marginTop: "4px" }}>
-                {selectedShow.localDate}
-              </div>
-              <button
-                onClick={clearSelection}
-                style={{
-                  marginTop: "12px",
-                  background: "none",
-                  border: "none",
-                  color: "#f4f1ea",
-                  textDecoration: "underline",
-                  cursor: "pointer",
-                  padding: 0,
-                  fontSize: "14px",
-                }}
-              >
-                Change show
-              </button>
-            </div>
-
-            <div style={{ marginBottom: "16px" }}>
-              <div style={{ marginBottom: "8px", color: "#aaa" }}>Rating</div>
-              <div style={{ display: "flex", gap: "6px" }}>
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
                     key={n}
                     onClick={() => setRating(n)}
                     aria-label={`${n} star${n === 1 ? "" : "s"}`}
+                    aria-pressed={n === rating}
                     style={{
+                      width: "44px",
+                      height: "44px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                       background: "none",
                       border: "none",
+                      borderRadius: "var(--radius-sm)",
                       cursor: "pointer",
                       padding: 0,
-                      fontSize: "32px",
-                      color: n <= rating ? "#fbbf24" : "#444",
-                      lineHeight: 1,
                     }}
                   >
-                    ★
+                    <svg
+                      width="32"
+                      height="32"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                      style={{ display: "block" }}
+                    >
+                      <path
+                        d={STAR_PATH}
+                        fill={n <= rating ? "var(--ink)" : "var(--disabled)"}
+                      />
+                    </svg>
                   </button>
                 ))}
               </div>
             </div>
 
             <textarea
+              className="input"
               value={reviewText}
               onChange={(e) => setReviewText(e.target.value)}
               placeholder="How was the show?"
               rows={6}
-              style={{
-                width: "100%",
-                padding: "12px",
-                borderRadius: "10px",
-                marginBottom: "16px",
-                background: "#1a1a1a",
-                color: "#f4f1ea",
-                border: "1px solid #333",
-                resize: "vertical",
-                fontFamily: "inherit",
-                fontSize: "15px",
-                boxSizing: "border-box",
-              }}
+              style={{ minHeight: "180px" }}
             />
 
-            {error && (
-              <div
-                style={{
-                  background: "#1f1f1f",
-                  padding: "12px",
-                  borderRadius: "12px",
-                  marginBottom: "16px",
-                  color: "#ff8080",
-                }}
-              >
-                {error}
-              </div>
-            )}
+            {error && <div className="notice notice-error">{error}</div>}
 
-            {rating === 0 && reviewText.trim().length > 0 && (
-              <div
-                style={{
-                  color: "#888",
-                  fontSize: "12px",
-                  marginBottom: "10px",
-                  textAlign: "center",
-                }}
-              >
-                No rating selected — your text won&rsquo;t be saved.
-              </div>
-            )}
+            <div className="stack" style={{ gap: "12px" }}>
+              {rating === 0 && reviewText.trim().length > 0 && (
+                <div className="hint" style={{ textAlign: "center" }}>
+                  No rating selected — your text won&rsquo;t be saved.
+                </div>
+              )}
 
-            <button
-              onClick={submit}
-              disabled={submitting}
-              style={{
-                width: "100%",
-                padding: "14px",
-                borderRadius: "12px",
-                border: "none",
-                background: submitting ? "#555" : "#f4f1ea",
-                color: submitting ? "#aaa" : "#0a0a0a",
-                cursor: submitting ? "not-allowed" : "pointer",
-                fontWeight: "bold",
-              }}
-            >
-              {submitting
-                ? "Posting…"
-                : rating > 0
-                  ? "Post Review"
-                  : "Mark as Attended"}
-            </button>
-          </>
+              <button
+                onClick={submit}
+                disabled={submitting}
+                className="btn btn-primary btn-lg btn-block"
+              >
+                {submitting
+                  ? "Posting…"
+                  : rating > 0
+                    ? "Post Review"
+                    : "Mark as Attended"}
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </main>

@@ -63,51 +63,54 @@ export default function VerifyEmailBanner() {
 
   return (
     <div
+      role="status"
       style={{
-        background: "#2a2517",
-        color: "#f4f1ea",
-        padding: "12px 16px",
-        borderBottom: "1px solid #3a3525",
+        background: "var(--warning-soft)",
+        color: "var(--warning-ink)",
+        borderBottom: "1px solid rgba(122, 75, 0, 0.12)",
         fontSize: "14px",
-        display: "flex",
-        flexWrap: "wrap",
-        alignItems: "center",
-        gap: "12px",
-        justifyContent: "center",
+        lineHeight: 1.45,
       }}
     >
-      <span>
-        Verify your email
-        {user.email ? ` (${user.email})` : ""} to fully activate your
-        account.
-      </span>
-      {sendState.kind === "idle" && (
-        <button
-          onClick={resend}
-          style={{
-            background: "transparent",
-            border: "1px solid #f4f1ea",
-            color: "#f4f1ea",
-            padding: "6px 12px",
-            borderRadius: "999px",
-            cursor: "pointer",
-            fontSize: "13px",
-          }}
-        >
-          Resend verification email
-        </button>
-      )}
-      {sendState.kind === "sending" && (
-        <span style={{ color: "#aaa" }}>Sending…</span>
-      )}
-      {sendState.kind === "sent" && (
-        <span style={{ color: "#9be597" }}>
-          Sent. Check your inbox.
+      <div
+        className="container"
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "8px 14px",
+          paddingTop: "10px",
+          paddingBottom: "10px",
+          textAlign: "center",
+        }}
+      >
+        <span>
+          Verify your email
+          {user.email ? ` (${user.email})` : ""} to fully activate your
+          account.
         </span>
-      )}
-      {sendState.kind === "error" && (
-        <span style={{ color: "#ff8080" }}>{sendState.message}</span>
-      )}
+        {sendState.kind === "idle" && (
+          <button
+            onClick={resend}
+            className="btn btn-outline btn-sm"
+            style={{ height: "32px" }}
+          >
+            Resend verification email
+          </button>
+        )}
+        {sendState.kind === "sending" && <span>Sending…</span>}
+        {sendState.kind === "sent" && (
+          <span style={{ color: "var(--success)", fontWeight: 500 }}>
+            Sent. Check your inbox.
+          </span>
+        )}
+        {sendState.kind === "error" && (
+          <span style={{ color: "var(--danger)", fontWeight: 500 }}>
+            {sendState.message}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

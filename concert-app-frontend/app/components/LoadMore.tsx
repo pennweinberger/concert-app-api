@@ -21,27 +21,16 @@ export default function LoadMore({
   label?: string;
 }) {
   return (
-    <div style={{ paddingTop: "8px" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
       <button
         onClick={onClick}
         disabled={loading}
-        style={{
-          background: "transparent",
-          border: "1px solid #2e2e2e",
-          borderRadius: "8px",
-          color: loading ? "#5a5a5a" : "#8a8a8a",
-          fontSize: "13px",
-          fontFamily: "inherit",
-          padding: "8px 14px",
-          cursor: loading ? "not-allowed" : "pointer",
-        }}
+        className="btn btn-outline"
       >
         {loading ? "Loading…" : error ? "Try again" : label}
       </button>
       {error && !loading && (
-        <div style={{ color: "#8a6a6a", fontSize: "12px", marginTop: "6px" }}>
-          {error}
-        </div>
+        <div style={{ color: "var(--danger)", fontSize: "13px" }}>{error}</div>
       )}
     </div>
   );

@@ -61,48 +61,53 @@ export default function PendingDeletionBanner() {
 
   return (
     <div
+      role="status"
       style={{
-        background: "#3a1f1f",
-        color: "#f4f1ea",
-        padding: "12px 16px",
-        borderBottom: "1px solid #5a2525",
+        background: "var(--warning-soft)",
+        color: "var(--warning-ink)",
+        borderBottom: "1px solid rgba(122, 75, 0, 0.12)",
         fontSize: "14px",
-        display: "flex",
-        flexWrap: "wrap",
-        alignItems: "center",
-        gap: "12px",
-        justifyContent: "center",
+        lineHeight: 1.45,
       }}
     >
-      <span>
-        Your account is scheduled for deletion
-        {scheduledLabel ? ` on ${scheduledLabel}` : ""}.
-      </span>
-      {cancelState.kind === "idle" && (
-        <button
-          onClick={cancel}
-          style={{
-            background: "transparent",
-            border: "1px solid #f4f1ea",
-            color: "#f4f1ea",
-            padding: "6px 12px",
-            borderRadius: "999px",
-            cursor: "pointer",
-            fontSize: "13px",
-          }}
-        >
-          Cancel deletion
-        </button>
-      )}
-      {cancelState.kind === "cancelling" && (
-        <span style={{ color: "#aaa" }}>Cancelling…</span>
-      )}
-      {cancelState.kind === "ok" && (
-        <span style={{ color: "#9be597" }}>Cancelled.</span>
-      )}
-      {cancelState.kind === "error" && (
-        <span style={{ color: "#ff8080" }}>{cancelState.message}</span>
-      )}
+      <div
+        className="container"
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "8px 14px",
+          paddingTop: "10px",
+          paddingBottom: "10px",
+          textAlign: "center",
+        }}
+      >
+        <span>
+          Your account is scheduled for deletion
+          {scheduledLabel ? ` on ${scheduledLabel}` : ""}.
+        </span>
+        {cancelState.kind === "idle" && (
+          <button
+            onClick={cancel}
+            className="btn btn-outline btn-sm"
+            style={{ height: "32px" }}
+          >
+            Cancel deletion
+          </button>
+        )}
+        {cancelState.kind === "cancelling" && <span>Cancelling…</span>}
+        {cancelState.kind === "ok" && (
+          <span style={{ color: "var(--success)", fontWeight: 500 }}>
+            Cancelled.
+          </span>
+        )}
+        {cancelState.kind === "error" && (
+          <span style={{ color: "var(--danger)", fontWeight: 500 }}>
+            {cancelState.message}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

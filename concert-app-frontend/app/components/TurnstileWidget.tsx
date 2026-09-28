@@ -45,7 +45,7 @@ export default function TurnstileWidget({
       if (widgetIdRef.current) return;
       widgetIdRef.current = window.turnstile.render(boxRef.current, {
         sitekey: siteKey,
-        theme: "dark",
+        theme: "light",
         callback: (token: string) => onToken(token),
         // A stale token is worse than no token — the server would reject
         // it and the user would see a confusing failure.
@@ -102,7 +102,7 @@ export default function TurnstileWidget({
     <div style={{ marginBottom: "14px" }}>
       <div ref={boxRef} />
       {failed && (
-        <div style={{ fontSize: "12.5px", color: "#8a6a6a", marginTop: "6px" }}>
+        <div className="hint" style={{ marginTop: "6px" }}>
           Couldn&rsquo;t load the verification check. You can still continue.
         </div>
       )}

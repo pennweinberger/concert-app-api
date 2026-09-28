@@ -43,37 +43,34 @@ function ForgotPasswordForm() {
   }
 
   return (
-    <div style={{ maxWidth: "420px", margin: "60px auto 0" }}>
-      <h1
-        style={{
-          fontSize: "30px",
-          marginBottom: "12px",
-          fontFamily: "var(--font-display), sans-serif",
-          fontWeight: 700,
-          letterSpacing: "-0.02em",
-        }}
-      >
+    <div
+      className="container-xs"
+      style={{ paddingTop: "clamp(40px,8vw,96px)", paddingBottom: "80px" }}
+    >
+      <h1 className="h1" style={{ marginBottom: "12px" }}>
         Forgot password
       </h1>
-      <p style={{ color: "#aaa", marginBottom: "24px", fontSize: "14px" }}>
+      <p
+        style={{
+          color: "var(--muted)",
+          margin: "0 0 32px",
+          fontSize: "16px",
+          lineHeight: 1.5,
+        }}
+      >
         Enter the email on your account and we will send you a link to set
         a new password.
       </p>
 
       {status.kind !== "done" && (
         <>
-          <div style={{ marginBottom: "20px" }}>
-            <label
-              style={{
-                display: "block",
-                color: "#aaa",
-                marginBottom: "6px",
-                fontSize: "14px",
-              }}
-            >
+          <div className="field" style={{ marginBottom: "24px" }}>
+            <label className="label" htmlFor="forgot-email">
               Email
             </label>
             <input
+              id="forgot-email"
+              className="input"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -82,27 +79,14 @@ function ForgotPasswordForm() {
               }}
               placeholder="you@example.com"
               autoComplete="email"
-              style={{
-                width: "100%",
-                padding: "14px",
-                borderRadius: "12px",
-                border: "1px solid #333",
-                background: "#1a1a1a",
-                color: "white",
-                boxSizing: "border-box",
-              }}
             />
           </div>
 
           {status.kind === "error" && (
             <div
-              style={{
-                background: "#1f1f1f",
-                padding: "12px",
-                borderRadius: "12px",
-                marginBottom: "16px",
-                color: "#ff8080",
-              }}
+              className="notice notice-error"
+              role="alert"
+              style={{ marginBottom: "16px" }}
             >
               {status.message}
             </div>
@@ -111,18 +95,8 @@ function ForgotPasswordForm() {
           <button
             onClick={submit}
             disabled={status.kind === "sending"}
-            style={{
-              width: "100%",
-              padding: "14px",
-              borderRadius: "12px",
-              border: "none",
-              background: status.kind === "sending" ? "#555" : "#f4f1ea",
-              color: status.kind === "sending" ? "#aaa" : "#0a0a0a",
-              cursor:
-                status.kind === "sending" ? "not-allowed" : "pointer",
-              fontWeight: "bold",
-              marginBottom: "20px",
-            }}
+            className="btn btn-primary btn-lg btn-block"
+            style={{ marginBottom: "4px" }}
           >
             {status.kind === "sending" ? "Sending…" : "Send reset link"}
           </button>
@@ -131,29 +105,17 @@ function ForgotPasswordForm() {
 
       {status.kind === "done" && (
         <div
-          style={{
-            background: "#1f1f1f",
-            padding: "12px",
-            borderRadius: "12px",
-            marginBottom: "16px",
-            color: "#9be597",
-          }}
+          className="notice notice-success"
+          role="status"
+          style={{ marginBottom: "16px" }}
         >
           If an account exists for that email, we sent a reset link. Check
           your inbox.
         </div>
       )}
 
-      <div style={{ textAlign: "center", marginTop: "20px" }}>
-        <Link
-          href="/signin"
-          style={{
-            color: "#f4f1ea",
-            fontSize: "14px",
-            textDecoration: "underline",
-            textUnderlineOffset: "3px",
-          }}
-        >
+      <div style={{ textAlign: "center", marginTop: "24px" }}>
+        <Link href="/signin" className="link" style={{ fontSize: "15px" }}>
           ← Back to sign in
         </Link>
       </div>
@@ -163,15 +125,17 @@ function ForgotPasswordForm() {
 
 export default function ForgotPasswordPage() {
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: "#f4f1ea",
-        padding: "24px",
-      }}
-    >
-      <Suspense fallback={<div style={{ color: "#aaa" }}>Loading…</div>}>
+    <main className="page">
+      <Suspense
+        fallback={
+          <div
+            className="container-xs meta"
+            style={{ paddingTop: "clamp(40px,8vw,96px)" }}
+          >
+            Loading…
+          </div>
+        }
+      >
         <ForgotPasswordForm />
       </Suspense>
     </main>

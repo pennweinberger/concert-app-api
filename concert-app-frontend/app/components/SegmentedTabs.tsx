@@ -21,16 +21,7 @@ export default function SegmentedTabs<T extends string>({
   label: string;
 }) {
   return (
-    <div
-      role="tablist"
-      aria-label={label}
-      style={{
-        display: "flex",
-        background: "rgba(255,255,255,0.07)",
-        borderRadius: "20px",
-        padding: "3px",
-      }}
-    >
+    <div role="tablist" aria-label={label} className="segmented">
       {options.map((opt) => {
         const active = opt.value === value;
         return (
@@ -39,18 +30,7 @@ export default function SegmentedTabs<T extends string>({
             onClick={() => onChange(opt.value)}
             role="tab"
             aria-selected={active}
-            style={{
-              background: active ? "rgba(255,255,255,0.11)" : "transparent",
-              border: "none",
-              borderRadius: "17px",
-              padding: "6px 17px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontFamily: "inherit",
-              color: active ? "#f4f1ea" : "#8a8a8a",
-              fontWeight: active ? 500 : 400,
-              whiteSpace: "nowrap",
-            }}
+            className="segmented-option"
           >
             {opt.label}
           </button>

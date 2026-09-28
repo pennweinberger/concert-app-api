@@ -63,31 +63,21 @@ function SignInForm() {
   }
 
   return (
-    <div style={{ maxWidth: "420px", margin: "60px auto 0" }}>
-      <h1
-        style={{
-          fontSize: "30px",
-          marginBottom: "24px",
-          fontFamily: "var(--font-display), sans-serif",
-          fontWeight: 700,
-          letterSpacing: "-0.02em",
-        }}
-      >
+    <div
+      className="container-xs"
+      style={{ paddingTop: "clamp(40px,8vw,96px)", paddingBottom: "80px" }}
+    >
+      <h1 className="h1" style={{ marginBottom: "32px" }}>
         Sign in
       </h1>
 
-      <div style={{ marginBottom: "14px" }}>
-        <label
-          style={{
-            display: "block",
-            color: "#aaa",
-            marginBottom: "6px",
-            fontSize: "14px",
-          }}
-        >
+      <div className="field" style={{ marginBottom: "18px" }}>
+        <label className="label" htmlFor="signin-handle">
           Handle
         </label>
         <input
+          id="signin-handle"
+          className="input"
           value={handle}
           onChange={(e) => setHandle(e.target.value)}
           onKeyDown={(e) => {
@@ -95,30 +85,16 @@ function SignInForm() {
           }}
           placeholder="your_handle"
           autoComplete="username"
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: "12px",
-            border: "1px solid #333",
-            background: "#1a1a1a",
-            color: "white",
-            boxSizing: "border-box",
-          }}
         />
       </div>
 
-      <div style={{ marginBottom: "20px" }}>
-        <label
-          style={{
-            display: "block",
-            color: "#aaa",
-            marginBottom: "6px",
-            fontSize: "14px",
-          }}
-        >
+      <div className="field" style={{ marginBottom: "24px" }}>
+        <label className="label" htmlFor="signin-password">
           Password
         </label>
         <input
+          id="signin-password"
+          className="input"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -126,25 +102,12 @@ function SignInForm() {
             if (e.key === "Enter") submit();
           }}
           autoComplete="current-password"
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: "12px",
-            border: "1px solid #333",
-            background: "#1a1a1a",
-            color: "white",
-            boxSizing: "border-box",
-          }}
         />
-        <div style={{ textAlign: "right", marginTop: "8px" }}>
+        <div style={{ textAlign: "right" }}>
           <Link
             href="/forgot-password"
-            style={{
-              color: "#aaa",
-              fontSize: "13px",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
+            className="link"
+            style={{ fontSize: "14px" }}
           >
             Forgot password?
           </Link>
@@ -153,13 +116,9 @@ function SignInForm() {
 
       {error && (
         <div
-          style={{
-            background: "#1f1f1f",
-            padding: "12px",
-            borderRadius: "12px",
-            marginBottom: "16px",
-            color: "#ff8080",
-          }}
+          className="notice notice-error"
+          role="alert"
+          style={{ marginBottom: "16px" }}
         >
           {error}
         </div>
@@ -168,45 +127,23 @@ function SignInForm() {
       <button
         onClick={submit}
         disabled={submitting}
-        style={{
-          width: "100%",
-          padding: "14px",
-          borderRadius: "12px",
-          border: "none",
-          background: submitting ? "#555" : "#f4f1ea",
-          color: submitting ? "#aaa" : "#0a0a0a",
-          cursor: submitting ? "not-allowed" : "pointer",
-          fontWeight: "bold",
-          marginBottom: "20px",
-        }}
+        className="btn btn-primary btn-lg btn-block"
+        style={{ marginBottom: "24px" }}
       >
         {submitting ? "Signing in…" : "Sign in"}
       </button>
 
-      <div style={{ color: "#aaa", fontSize: "14px", textAlign: "center" }}>
+      <div
+        style={{ color: "var(--muted)", fontSize: "15px", textAlign: "center" }}
+      >
         No account?{" "}
-        <Link
-          href={`/signup?next=${encodeURIComponent(next)}`}
-          style={{
-            color: "#f4f1ea",
-            textDecoration: "underline",
-            textUnderlineOffset: "3px",
-          }}
-        >
+        <Link href={`/signup?next=${encodeURIComponent(next)}`} className="link">
           Sign up
         </Link>
       </div>
 
       <div style={{ marginTop: "20px", textAlign: "center" }}>
-        <Link
-          href="/"
-          style={{
-            color: "#f4f1ea",
-            fontSize: "14px",
-            textDecoration: "underline",
-            textUnderlineOffset: "3px",
-          }}
-        >
+        <Link href="/" className="link" style={{ fontSize: "15px" }}>
           ← Back to feed
         </Link>
       </div>
@@ -216,15 +153,17 @@ function SignInForm() {
 
 export default function SignInPage() {
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: "#f4f1ea",
-        padding: "24px",
-      }}
-    >
-      <Suspense fallback={<div style={{ color: "#aaa" }}>Loading…</div>}>
+    <main className="page">
+      <Suspense
+        fallback={
+          <div
+            className="container-xs meta"
+            style={{ paddingTop: "clamp(40px,8vw,96px)" }}
+          >
+            Loading…
+          </div>
+        }
+      >
         <SignInForm />
       </Suspense>
     </main>

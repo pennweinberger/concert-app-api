@@ -123,113 +123,140 @@ export default function NotificationsPage() {
   }, []);
 
   if (!authUser) {
-    return (
-      <main
-        style={{ background: "#0a0a0a", minHeight: "100vh", color: "#f4f1ea" }}
-      />
-    );
+    return <main className="page" />;
   }
 
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: "#f4f1ea",
-        padding: "24px",
-      }}
-    >
-      <div style={{ maxWidth: "700px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "20px" }}>
-          <Link
-            href="/"
-            style={{
-              color: "#f4f1ea",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-            }}
-          >
-            ← Back to feed
-          </Link>
-        </div>
-
-        <h1
+    <main className="page">
+      <div
+        className="container-sm"
+        style={{ paddingTop: "20px", paddingBottom: "clamp(28px, 4vw, 40px)" }}
+      >
+        <Link
+          href="/"
+          className="link"
           style={{
-            fontSize: "30px",
-            marginBottom: "24px",
-            fontFamily: "var(--font-display), sans-serif",
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "2px",
+            minHeight: "40px",
+            fontSize: "15px",
           }}
         >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
+          Back to feed
+        </Link>
+
+        <h1 className="h1" style={{ marginTop: "16px" }}>
           Notifications
         </h1>
+      </div>
 
-        {loading && (
-          <div style={{ color: "#888", padding: "16px" }}>Loading…</div>
-        )}
-        {error && !loading && (
-          <div style={{ color: "#ff8080", padding: "16px" }}>{error}</div>
-        )}
-        {!loading && !error && items.length === 0 && (
-          <div style={{ color: "#888", padding: "16px" }}>
-            No notifications yet.
-          </div>
-        )}
-
-        {items.map((n) => {
-          const unread = !n.readAt;
-          return (
-            <Link
-              key={n.id}
-              href={hrefFor(n)}
+      <section className="band">
+        <div
+          className="container-sm"
+          style={{
+            paddingTop: "clamp(28px, 4vw, 48px)",
+            paddingBottom: "clamp(40px, 6vw, 80px)",
+          }}
+        >
+          {loading && (
+            <div className="meta" style={{ textAlign: "center", padding: "16px" }}>
+              Loading…
+            </div>
+          )}
+          {error && !loading && (
+            <div className="notice notice-error">{error}</div>
+          )}
+          {!loading && !error && items.length === 0 && (
+            <div
+              className="card"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                padding: "14px",
-                borderRadius: "12px",
-                background: unread ? "#171a22" : "#141414",
-                border: unread ? "1px solid #2a3550" : "1px solid #222",
-                marginBottom: "8px",
-                textDecoration: "none",
-                color: "inherit",
+                textAlign: "center",
+                padding: "48px 24px",
+                fontSize: "17px",
+                color: "var(--ink-2)",
               }}
             >
-              <Avatar
-                handle={n.actor?.handle ?? "?"}
-                name={n.actor?.name ?? null}
-                size={40}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div>
-                  <span style={{ fontWeight: 600 }}>
-                    {n.actor ? `@${n.actor.handle}` : "Someone"}
-                  </span>{" "}
-                  <span style={{ color: "#cfcfcf" }}>{actionText(n.type)}</span>
-                </div>
-                <div
-                  style={{ color: "#777", fontSize: "13px", marginTop: "2px" }}
-                >
-                  {timeAgo(n.createdAt)}
-                </div>
-              </div>
-              {unread && (
-                <span
-                  aria-label="unread"
-                  style={{
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "999px",
-                    background: "#ff4d6d",
-                    flexShrink: 0,
-                  }}
-                />
-              )}
-            </Link>
-          );
-        })}
-      </div>
+              No notifications yet.
+            </div>
+          )}
+
+          {items.length > 0 && (
+            <div className="card" style={{ padding: "6px" }}>
+              {items.map((n, i) => {
+                const unread = !n.readAt;
+                return (
+                  <div key={n.id}>
+                    {i > 0 && (
+                      <hr className="divider" style={{ margin: "0 14px" }} />
+                    )}
+                    <Link
+                      href={hrefFor(n)}
+                      className="link-quiet"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "14px",
+                        padding: "14px",
+                        borderRadius: "var(--radius-md)",
+                        background: unread ? "var(--accent-soft)" : "transparent",
+                        color: "var(--ink)",
+                      }}
+                    >
+                      <Avatar
+                        handle={n.actor?.handle ?? "?"}
+                        name={n.actor?.name ?? null}
+                        size={40}
+                      />
+                      <div style={{ flex: 1, minWidth: 0, fontSize: "15px" }}>
+                        <div>
+                          <span style={{ fontWeight: 600 }}>
+                            {n.actor ? `@${n.actor.handle}` : "Someone"}
+                          </span>{" "}
+                          <span style={{ color: "var(--ink-2)" }}>
+                            {actionText(n.type)}
+                          </span>
+                        </div>
+                        <div
+                          className="meta"
+                          style={{ fontSize: "13px", marginTop: "2px" }}
+                        >
+                          {timeAgo(n.createdAt)}
+                        </div>
+                      </div>
+                      {unread && (
+                        <span
+                          aria-label="unread"
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "999px",
+                            background: "var(--accent-ink)",
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
     </main>
   );
 }

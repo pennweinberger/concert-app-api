@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { clearSession } from "../lib/auth";
 
-// Compact-masthead account menu (mobile / narrow tablet). Collapses the
-// secondary nav destinations behind a monochrome avatar trigger so the
-// masthead stays one clean row. Accessible: opens on click/Enter/Space,
+// Masthead account menu (all breakpoints). Collapses the secondary nav
+// destinations behind an avatar trigger so the masthead stays one clean
+// row. Accessible: opens on click/Enter/Space,
 // closes on outside click, Escape (restoring focus to the trigger), or
 // selecting an item. Preserves every destination + the sign-out action.
 export default function ProfileMenu({
@@ -58,31 +58,60 @@ export default function ProfileMenu({
   const initial = handle.charAt(0).toUpperCase();
 
   return (
-    <div ref={containerRef} style={{ position: "relative" }}>
+    <div ref={containerRef} style={{ position: "relative", marginLeft: "4px" }}>
       <button
         ref={triggerRef}
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Account menu"
+        aria-label={`Account menu for @${handle}`}
         style={{
-          width: 30,
-          height: 30,
-          borderRadius: "50%",
-          background: "#2a2a2a",
-          border: "none",
-          color: "#f4f1ea",
+          height: 40,
+          padding: "0 10px 0 4px",
+          borderRadius: 999,
+          border: "1px solid var(--line)",
+          background: "var(--bg)",
           cursor: "pointer",
-          fontSize: 13,
-          fontWeight: 600,
           display: "inline-flex",
           alignItems: "center",
-          justifyContent: "center",
-          padding: 0,
+          gap: 8,
           fontFamily: "inherit",
         }}
       >
-        {initial}
+        <span
+          aria-hidden="true"
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: "50%",
+            background: "var(--ink)",
+            color: "#fff",
+            fontSize: 12.5,
+            fontWeight: 600,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {initial}
+        </span>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--muted)"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={{
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform 130ms ease",
+          }}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
       </button>
 
       {open && (
@@ -90,31 +119,45 @@ export default function ProfileMenu({
           ref={menuRef}
           role="menu"
           aria-label="Account"
-          style={{
-            position: "absolute",
-            top: "calc(100% + 8px)",
-            right: 0,
-            minWidth: 172,
-            background: "#141414",
-            border: "1px solid #262626",
-            borderRadius: 10,
-            overflow: "hidden",
-            zIndex: 60,
-            padding: "4px 0",
-          }}
+          className="menu"
+          style={{ top: "calc(100% + 10px)", right: 0, width: 240 }}
         >
+          <div
+            style={{
+              padding: "10px 12px 12px",
+              marginBottom: 6,
+              borderBottom: "1px solid var(--line-soft)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+            }}
+          >
+            <span style={{ fontSize: 14.5, fontWeight: 600 }}>@{handle}</span>
+            <span style={{ fontSize: 12.5, color: "var(--muted)" }}>
+              Signed in
+            </span>
+          </div>
           <Link
             role="menuitem"
             href={`/user/${handle}`}
-            className="profile-menu-item"
+            className="menu-item"
             onClick={() => setOpen(false)}
           >
             Profile
           </Link>
+          {/* Mobile only: desktop shows these in the masthead row. */}
+          <Link
+            role="menuitem"
+            href="/review/new"
+            className="menu-item show-mobile"
+            onClick={() => setOpen(false)}
+          >
+            Write Review
+          </Link>
           <Link
             role="menuitem"
             href="/people"
-            className="profile-menu-item"
+            className="menu-item show-mobile"
             onClick={() => setOpen(false)}
           >
             Find Users
@@ -122,7 +165,7 @@ export default function ProfileMenu({
           <Link
             role="menuitem"
             href="/settings"
-            className="profile-menu-item"
+            className="menu-item"
             onClick={() => setOpen(false)}
           >
             Settings
@@ -131,20 +174,16 @@ export default function ProfileMenu({
             <Link
               role="menuitem"
               href="/admin/moderation"
-              className="profile-menu-item"
-              style={{ color: "#ff8080" }}
+              className="menu-item menu-item-danger"
               onClick={() => setOpen(false)}
             >
               Admin
             </Link>
           )}
-          <div
-            aria-hidden="true"
-            style={{ height: 1, background: "#262626", margin: "4px 0" }}
-          />
+          <div aria-hidden="true" className="menu-divider" />
           <button
             role="menuitem"
-            className="profile-menu-item"
+            className="menu-item menu-item-muted"
             onClick={() => {
               setOpen(false);
               clearSession();

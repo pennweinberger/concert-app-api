@@ -86,149 +86,124 @@ export default function SettingsPage() {
   // Render nothing until we know whether the user is signed in (avoids
   // a flash of the form before the auth redirect fires).
   if (!authUser || !loaded) {
-    return (
-      <main
-        style={{
-          background: "#0a0a0a",
-          minHeight: "100vh",
-          color: "#f4f1ea",
-        }}
-      />
-    );
+    return <main className="page" />;
   }
 
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: "#f4f1ea",
-        padding: "24px",
-      }}
-    >
-      <div style={{ maxWidth: "520px", margin: "0 auto" }}>
+    <main className="page">
+      <div
+        className="container-sm"
+        style={{ paddingTop: "clamp(28px,4vw,48px)", paddingBottom: "80px" }}
+      >
         <div style={{ marginBottom: "20px" }}>
           <Link
             href="/"
+            className="link"
             style={{
-              color: "#f4f1ea",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "2px",
+              minHeight: "40px",
+              fontSize: "15px",
             }}
           >
-            ← Back to feed
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M15 5l-7 7 7 7" />
+            </svg>
+            Back to feed
           </Link>
         </div>
 
-        <h1
-          style={{
-            fontSize: "28px",
-            marginBottom: "20px",
-            fontFamily: "var(--font-display), sans-serif",
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Edit profile
+        <h1 className="h1" style={{ marginBottom: "32px" }}>
+          Settings
         </h1>
 
-        {/* Live preview of the avatar */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "16px",
-            marginBottom: "24px",
-            padding: "14px",
-            background: "#1a1a1a",
-            borderRadius: "14px",
-          }}
-        >
-          <Avatar handle={authUser.handle} name={name} size={56} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: "bold", fontSize: "16px" }}>
-              {name.trim() || `@${authUser.handle}`}
-            </div>
-            <div style={{ color: "#888", fontSize: "13px" }}>
-              @{authUser.handle}
-            </div>
-          </div>
-        </div>
+        <section className="card card-outline">
+          <h2 className="h3" style={{ marginBottom: "20px" }}>
+            Edit profile
+          </h2>
 
-        <div style={{ marginBottom: "16px" }}>
-          <label
-            style={{
-              display: "block",
-              color: "#aaa",
-              marginBottom: "6px",
-              fontSize: "14px",
-            }}
-          >
-            Display name
-          </label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Optional"
-            maxLength={50}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #333",
-              background: "#1a1a1a",
-              color: "#f4f1ea",
-              boxSizing: "border-box",
-            }}
-          />
-          <div style={{ color: "#666", fontSize: "12px", marginTop: "6px" }}>
-            Shown in place of @{authUser.handle}. Up to 50 characters.
-          </div>
-        </div>
-
-        {error && (
+          {/* Live preview of the avatar */}
           <div
             style={{
-              background: "#1f1f1f",
-              padding: "12px",
-              borderRadius: "12px",
-              marginBottom: "16px",
-              color: "#ff8080",
+              display: "flex",
+              alignItems: "center",
+              gap: "16px",
+              marginBottom: "24px",
+              padding: "16px",
+              background: "var(--surface)",
+              borderRadius: "var(--radius-md)",
             }}
           >
-            {error}
+            <Avatar handle={authUser.handle} name={name} size={56} />
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: "16px",
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                {name.trim() || `@${authUser.handle}`}
+              </div>
+              <div className="meta">@{authUser.handle}</div>
+            </div>
           </div>
-        )}
-        {success && (
-          <div
-            style={{
-              background: "#1f1f1f",
-              padding: "12px",
-              borderRadius: "12px",
-              marginBottom: "16px",
-              color: "#7dff9b",
-            }}
-          >
-            {success}
-          </div>
-        )}
 
-        <button
-          onClick={save}
-          disabled={submitting}
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: "12px",
-            border: "none",
-            background: submitting ? "#555" : "#f4f1ea",
-            color: submitting ? "#aaa" : "#0a0a0a",
-            cursor: submitting ? "not-allowed" : "pointer",
-            fontWeight: "bold",
-          }}
-        >
-          {submitting ? "Saving…" : "Save"}
-        </button>
+          <div className="field" style={{ marginBottom: "24px" }}>
+            <label className="label" htmlFor="settings-name">
+              Display name
+            </label>
+            <input
+              id="settings-name"
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Optional"
+              maxLength={50}
+            />
+            <div className="hint">
+              Shown in place of @{authUser.handle}. Up to 50 characters.
+            </div>
+          </div>
+
+          {error && (
+            <div
+              className="notice notice-error"
+              role="alert"
+              style={{ marginBottom: "16px" }}
+            >
+              {error}
+            </div>
+          )}
+          {success && (
+            <div
+              className="notice notice-success"
+              role="status"
+              style={{ marginBottom: "16px" }}
+            >
+              {success}
+            </div>
+          )}
+
+          <button
+            onClick={save}
+            disabled={submitting}
+            className="btn btn-primary btn-lg btn-block"
+          >
+            {submitting ? "Saving…" : "Save"}
+          </button>
+        </section>
 
         <DangerZone />
       </div>
@@ -282,19 +257,10 @@ function DangerZone() {
   }
 
   return (
-    <div
-      style={{
-        marginTop: "48px",
-        paddingTop: "24px",
-        borderTop: "1px solid #2a1f1f",
-      }}
-    >
+    <section className="card card-outline" style={{ marginTop: "24px" }}>
       <h2
-        style={{
-          fontSize: "16px",
-          color: "#ff8080",
-          marginBottom: "12px",
-        }}
+        className="h3"
+        style={{ color: "var(--danger)", marginBottom: "16px" }}
       >
         Danger zone
       </h2>
@@ -302,71 +268,33 @@ function DangerZone() {
       {!expanded && requestState.kind === "idle" && (
         <button
           onClick={() => setExpanded(true)}
-          style={{
-            background: "transparent",
-            border: "1px solid #ff8080",
-            color: "#ff8080",
-            padding: "10px 16px",
-            borderRadius: "12px",
-            cursor: "pointer",
-            fontSize: "14px",
-          }}
+          className="btn btn-outline"
+          style={{ color: "var(--danger)" }}
         >
           Delete account
         </button>
       )}
 
       {expanded && requestState.kind === "idle" && (
-        <div
-          style={{
-            background: "#1f1f1f",
-            padding: "16px",
-            borderRadius: "12px",
-            border: "1px solid #3a1f1f",
-          }}
-        >
-          <p
-            style={{
-              color: "#f4f1ea",
-              fontSize: "14px",
-              marginBottom: "12px",
-              lineHeight: 1.5,
-            }}
-          >
+        <div className="notice notice-warning" style={{ padding: "16px" }}>
+          <p style={{ margin: "0 0 16px", lineHeight: 1.5 }}>
             Are you sure? We will email you a confirmation link. After you
             click it, your account will be scheduled for deletion in 30
             days. Your reviews will remain on Afterset as archive records,
             attributed as <em>[deleted user]</em>.
           </p>
-          <div style={{ display: "flex", gap: "12px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
             <button
               onClick={requestDelete}
               disabled={submitting}
-              style={{
-                background: submitting ? "#555" : "#ff8080",
-                border: "none",
-                color: "#0a0a0a",
-                padding: "10px 16px",
-                borderRadius: "12px",
-                cursor: submitting ? "not-allowed" : "pointer",
-                fontSize: "14px",
-                fontWeight: "bold",
-              }}
+              className="btn btn-danger"
             >
               {submitting ? "Sending…" : "Send confirmation email"}
             </button>
             <button
               onClick={() => setExpanded(false)}
               disabled={submitting}
-              style={{
-                background: "transparent",
-                border: "1px solid #555",
-                color: "#aaa",
-                padding: "10px 16px",
-                borderRadius: "12px",
-                cursor: "pointer",
-                fontSize: "14px",
-              }}
+              className="btn btn-outline"
             >
               Cancel
             </button>
@@ -375,48 +303,24 @@ function DangerZone() {
       )}
 
       {requestState.kind === "sent" && (
-        <div
-          style={{
-            background: "#1f1f1f",
-            padding: "12px",
-            borderRadius: "12px",
-            color: "#9be597",
-            fontSize: "14px",
-          }}
-        >
+        <div className="notice notice-success" role="status">
           We sent a confirmation link to your email. Click it to schedule
           deletion (you can still cancel during the 30-day grace period).
         </div>
       )}
 
       {requestState.kind === "already_pending" && (
-        <div
-          style={{
-            background: "#1f1f1f",
-            padding: "12px",
-            borderRadius: "12px",
-            color: "#f4d27d",
-            fontSize: "14px",
-          }}
-        >
+        <div className="notice notice-warning" role="status">
           Your account is already scheduled for deletion. See the banner
           at the top of the page to cancel.
         </div>
       )}
 
       {requestState.kind === "error" && (
-        <div
-          style={{
-            background: "#1f1f1f",
-            padding: "12px",
-            borderRadius: "12px",
-            color: "#ff8080",
-            fontSize: "14px",
-          }}
-        >
+        <div className="notice notice-error" role="alert">
           {requestState.message}
         </div>
       )}
-    </div>
+    </section>
   );
 }

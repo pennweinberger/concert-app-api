@@ -59,7 +59,7 @@ export default function VerifyToPublishModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.65)",
+        background: "rgba(0,0,0,0.4)",
         zIndex: 60,
         display: "flex",
         alignItems: "center",
@@ -71,34 +71,42 @@ export default function VerifyToPublishModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#141414",
-          border: "1px solid #333",
-          borderRadius: "16px",
-          padding: "24px",
+          background: "var(--bg)",
+          borderRadius: "var(--radius-xl)",
+          boxShadow: "var(--shadow-lg)",
+          padding: "32px 28px 24px",
           width: "100%",
           maxWidth: "420px",
-          color: "#f4f1ea",
+          boxSizing: "border-box",
+          color: "var(--ink)",
         }}
       >
-        <div style={{ fontSize: "20px", fontWeight: 700, marginBottom: "10px" }}>
+        <h2 className="h3" style={{ marginBottom: "12px" }}>
           Almost there!
-        </div>
-        <p style={{ color: "#cfcfcf", lineHeight: 1.5, marginBottom: "6px" }}>
+        </h2>
+        <p
+          style={{
+            margin: "0 0 8px",
+            fontSize: "16px",
+            lineHeight: 1.5,
+            color: "var(--ink-2)",
+          }}
+        >
           Verify your email to publish {kind === "review" ? "reviews" : "comments"} and
           help keep Afterset spam-free.
         </p>
-        <p style={{ color: "#888", fontSize: "13px", marginBottom: "18px" }}>
+        <p className="meta" style={{ margin: "0 0 20px", lineHeight: 1.5 }}>
           Your {kind} is saved — verify, then hit “I&rsquo;ve verified” and it&rsquo;ll
           publish right away. No need to retype anything.
         </p>
 
         {resent && (
-          <div style={{ color: "#7dff9b", fontSize: "13px", marginBottom: "12px" }}>
+          <div className="notice notice-success" style={{ marginBottom: "12px" }}>
             Verification email sent — check your inbox.
           </div>
         )}
         {resendError && (
-          <div style={{ color: "#ff8080", fontSize: "13px", marginBottom: "12px" }}>
+          <div className="notice notice-error" style={{ marginBottom: "12px" }}>
             {resendError}
           </div>
         )}
@@ -107,44 +115,18 @@ export default function VerifyToPublishModal({
           <button
             onClick={onRetry}
             disabled={retrying}
-            style={{
-              padding: "12px",
-              borderRadius: "10px",
-              border: "none",
-              background: retrying ? "#555" : "#f4f1ea",
-              color: retrying ? "#aaa" : "#0a0a0a",
-              fontWeight: "bold",
-              cursor: retrying ? "not-allowed" : "pointer",
-            }}
+            className="btn btn-primary btn-block"
           >
             {retrying ? "Publishing…" : "I've verified my email"}
           </button>
           <button
             onClick={resend}
             disabled={resending}
-            style={{
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #333",
-              background: "none",
-              color: "#f4f1ea",
-              cursor: resending ? "not-allowed" : "pointer",
-            }}
+            className="btn btn-secondary btn-block"
           >
             {resending ? "Sending…" : "Resend verification email"}
           </button>
-          <button
-            onClick={onClose}
-            style={{
-              padding: "8px",
-              borderRadius: "10px",
-              border: "none",
-              background: "none",
-              color: "#888",
-              cursor: "pointer",
-              fontSize: "13px",
-            }}
-          >
+          <button onClick={onClose} className="btn btn-ghost btn-block">
             Not now
           </button>
         </div>

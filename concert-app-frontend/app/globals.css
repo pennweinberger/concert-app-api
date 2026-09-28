@@ -1,121 +1,562 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   Afterset design system — "Studio"
+   --------------------------------------------------------------------------
+   Light, typographic, restrained. The codebase is inline-style-first, so
+   pages read these tokens as `var(--…)` in their inline styles. Anything an
+   inline style cannot express — hover/focus states and responsive layout —
+   lives in the small set of classes below.
+
+   Colour rules:
+   - Near-black ink on white; grey (--surface) bands group content.
+   - Magenta (--accent) is the one saturated colour. As a FILL it appears
+     at full strength only on the Write Review "+" disc. Accent-coloured
+     TEXT uses --accent-ink, the darker shade that passes 4.5:1 on white.
+   - --muted is the lightest grey allowed for text (4.6:1 on white,
+     4.2:1 on --surface — keep it to 13px+ on bands). Never go lighter.
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --surface: #f5f5f7;
+  --surface-2: #e8e8ed;
+  --ink: #1d1d1f;
+  --ink-2: #424245;
+  --muted: #6e6e73;
+  --line: #e5e5ea;
+  --line-soft: #ececef;
+  --disabled: #d2d2d7;
+
+  --accent: #e0219b;
+  --accent-ink: #b3197c;
+  --accent-soft: rgba(224, 33, 155, 0.08);
+
+  --danger: #c4001a;
+  --danger-soft: #fff1f2;
+  --success: #1d7a36;
+  --success-soft: #effaf2;
+  --warning-soft: #fff8e6;
+  --warning-ink: #7a4b00;
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px -16px rgba(0, 0, 0, 0.16);
+  --shadow-lg: 0 24px 48px -16px rgba(0, 0, 0, 0.22);
+
+  --page-max: 1200px;
+  --gutter: 24px;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --gutter: 16px;
+  }
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
   --font-sans: var(--font-body);
-  --font-serif: var(--font-display);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--bg);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--ink);
   font-family: var(--font-body), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Responsive masthead: full link row on desktop, compact row with a
-   profile menu on mobile / narrow tablet. Both variants render; CSS
-   toggles which is visible so there is no hydration flash. `display`
-   lives here (not inline) so the media query can override it. */
-.masthead-nav-desktop {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 16px;
+::selection {
+  background: rgba(224, 33, 155, 0.18);
 }
-.masthead-nav-compact {
-  display: none;
-  align-items: center;
-  gap: 14px;
+
+:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Layout
+   -------------------------------------------------------------------------- */
+
+/* Centred page column. Widths step down by content type. */
+.container,
+.container-md,
+.container-sm,
+.container-xs {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+  box-sizing: border-box;
+}
+.container { max-width: calc(var(--page-max) + 2 * var(--gutter)); }
+.container-md { max-width: calc(880px + 2 * var(--gutter)); }
+.container-sm { max-width: calc(640px + 2 * var(--gutter)); }
+.container-xs { max-width: calc(420px + 2 * var(--gutter)); }
+
+/* Full-bleed grey band that groups a page's list content. Grows to fill
+   the viewport so short pages don't end in a white gap above the footer. */
+.band {
+  background: var(--surface);
+  flex: 1 0 auto;
+}
+
+/* Page shell: every page's <main>. Column flex so a .band can grow. */
+.page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
+
+.stack { display: flex; flex-direction: column; }
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+@media (max-width: 860px) {
+  .grid-2 { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+}
+
+/* Featured card interior: headline column + body column; stacks on mobile. */
+.split-5-7 {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  column-gap: 40px;
+  row-gap: 20px;
+}
+@media (max-width: 860px) {
+  .split-5-7 { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .hide-mobile { display: none !important; }
+}
+@media (min-width: 769px) {
+  .show-mobile { display: none !important; }
+}
+
+/* --------------------------------------------------------------------------
+   Type
+   -------------------------------------------------------------------------- */
+
+.display {
+  margin: 0;
+  font-size: clamp(44px, 7.4vw, 88px);
+  line-height: 0.98;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+}
+.h1 {
+  margin: 0;
+  font-size: clamp(32px, 4.6vw, 48px);
+  line-height: 1.02;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+}
+.h2 {
+  margin: 0;
+  font-size: clamp(26px, 3.4vw, 40px);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+.h3 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.lede {
+  margin: 0;
+  font-size: clamp(17px, 1.6vw, 21px);
+  line-height: 1.45;
+  color: var(--muted);
+  letter-spacing: -0.012em;
+}
+.eyebrow {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.meta {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.link {
+  color: var(--accent-ink);
+  text-decoration: none;
+  font-weight: 500;
+}
+.link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.link-quiet {
+  color: inherit;
+  text-decoration: none;
+}
+.link-quiet:hover { color: var(--accent-ink); }
+
+/* --------------------------------------------------------------------------
+   Surfaces
+   -------------------------------------------------------------------------- */
+
+.card {
+  background: var(--bg);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  box-shadow: var(--shadow-sm);
+  box-sizing: border-box;
+}
+/* A card sitting on white (not on a band) needs an edge. */
+.card-outline {
+  border: 1px solid var(--line);
+}
+.card-lg {
+  border-radius: var(--radius-xl);
+  padding: 48px;
+  box-shadow: var(--shadow-md);
 }
 @media (max-width: 768px) {
-  .masthead-nav-desktop {
-    display: none;
-  }
-  .masthead-nav-compact {
-    display: flex;
-  }
+  .card { padding: 22px; }
+  .card-lg { padding: 24px; border-radius: var(--radius-lg); }
 }
 
-/* Peer actions (the show page's Write Review / Attended pair).
-   The two are deliberately equal-weight alternatives, so the accent is
-   spent on INTERACTION and SELECTED state rather than on permanently
-   ranking one above the other. Hover/focus live here because inline
-   styles can't express either.
-
-   Border and fill are driven by custom properties, NOT by plain
-   border/background declarations here. Both peers are styled inline
-   (this codebase is inline-style-first), and an inline declaration beats
-   any stylesheet rule — so a `.peer-action:hover { border-color: … }`
-   rule silently does nothing. Inline styles instead read
-   `var(--peer-*)`, and these rules reassign those variables, which does
-   win because the inline style never declares the variables itself. */
-.peer-action {
-  border: 1px solid var(--peer-border, #333);
-  background-color: var(--peer-bg, transparent);
-  background-image: var(--peer-fill, none);
-  transition:
-    border-color 130ms ease,
-    background-color 130ms ease;
+/* Clickable card: the whole card links somewhere (an overlay <a>). */
+.card-link {
+  transition: box-shadow 160ms ease, transform 160ms ease;
 }
-.peer-action:hover,
-.peer-action:focus-visible {
-  --peer-border: rgba(224, 110, 180, 0.55);
-  --peer-bg: rgba(224, 33, 155, 0.1);
-}
-/* Selected (attended). The accent marks state, not priority — the two
-   actions stay equal-weight. */
-.peer-action.is-selected {
-  --peer-border: rgba(226, 90, 170, 0.6);
-  --peer-fill: linear-gradient(
-    100deg,
-    rgba(120, 40, 90, 0.34),
-    rgba(60, 20, 80, 0.24)
-  );
-}
-/* Deepen rather than replace, so "selected" and "selected + hovered"
-   stay distinguishable. */
-.peer-action.is-selected:hover,
-.peer-action.is-selected:focus-visible {
-  --peer-border: rgba(226, 90, 170, 0.78);
-  --peer-fill: linear-gradient(
-    100deg,
-    rgba(140, 46, 105, 0.42),
-    rgba(72, 24, 96, 0.3)
-  );
+.card-link:hover {
+  box-shadow: var(--shadow-md);
 }
 
-/* Profile-menu items: monochrome, subtle hover/focus for keyboard use. */
-.profile-menu-item {
+.divider {
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+  margin: 0;
+}
+
+/* Inline status messages. */
+.notice {
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+.notice-error { background: var(--danger-soft); color: var(--danger); }
+.notice-success { background: var(--success-soft); color: var(--success); }
+.notice-info { background: var(--surface); color: var(--ink-2); }
+.notice-warning { background: var(--warning-soft); color: var(--warning-ink); }
+
+/* --------------------------------------------------------------------------
+   Controls
+   -------------------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color 130ms ease, border-color 130ms ease,
+    color 130ms ease, box-shadow 130ms ease;
+}
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.btn-sm { height: 36px; padding: 0 14px; font-size: 13.5px; }
+.btn-lg { height: 56px; padding: 0 28px; font-size: 17px; }
+.btn-block { width: 100%; }
+
+.btn-primary { background: var(--ink); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #000; }
+
+.btn-secondary { background: var(--surface); color: var(--ink); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
+
+.btn-outline { background: var(--bg); color: var(--ink); border-color: var(--line); }
+.btn-outline:hover:not(:disabled) { border-color: var(--disabled); background: var(--surface); }
+
+.btn-ghost { background: transparent; color: var(--ink); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface); }
+
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #a30016; }
+
+/* Round icon-only button (bell, menus, close). */
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+  transition: background-color 130ms ease;
+}
+.icon-btn:hover { background: var(--surface); }
+
+/* Low-emphasis inline action (like, comment, report). */
+.text-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: none;
+}
+.text-action:hover { color: var(--ink); }
+.text-action[aria-pressed="true"] { color: var(--accent-ink); }
+
+.field { display: flex; flex-direction: column; gap: 8px; }
+.label { font-size: 14px; font-weight: 600; color: var(--ink); }
+.hint { font-size: 13px; color: var(--muted); line-height: 1.45; }
+
+.input {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 16px;
+  box-sizing: border-box;
+  transition: border-color 130ms ease, background-color 130ms ease,
+    box-shadow 130ms ease;
+}
+textarea.input {
+  height: auto;
+  min-height: 120px;
+  padding: 14px 16px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.input::placeholder { color: var(--muted); opacity: 1; }
+.input:hover { background: var(--surface-2); }
+.input:focus {
+  outline: none;
+  background: var(--bg);
+  border-color: var(--accent-ink);
+  box-shadow: 0 0 0 4px rgba(224, 33, 155, 0.14);
+}
+.input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Pill segmented control (SegmentedTabs). */
+.segmented {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.band .segmented { background: var(--surface-2); }
+.segmented-option {
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 130ms ease, color 130ms ease;
+}
+.segmented-option:hover { color: var(--ink); }
+.segmented-option[aria-selected="true"] {
+  background: var(--bg);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+@media (max-width: 768px) {
+  .segmented-option { padding: 7px 13px; font-size: 13.5px; }
+}
+
+/* Popover menus (account menu, report menu). */
+.menu {
+  position: absolute;
+  z-index: 60;
+  min-width: 220px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg);
+  padding: 8px;
+  box-sizing: border-box;
+}
+.menu-item {
   display: block;
   width: 100%;
   text-align: left;
   background: none;
   border: none;
-  padding: 10px 14px;
-  font-size: 14px;
-  color: #d8d1c2;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--ink);
   cursor: pointer;
   text-decoration: none;
-  font-family: inherit;
   box-sizing: border-box;
 }
-.profile-menu-item:hover,
-.profile-menu-item:focus-visible {
-  background: #1e1e1e;
-  color: #f4f1ea;
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--surface);
   outline: none;
+}
+.menu-item-muted { color: var(--muted); }
+.menu-item-danger { color: var(--danger); }
+.menu-divider { height: 1px; background: var(--line-soft); margin: 6px 0; }
+
+/* --------------------------------------------------------------------------
+   Masthead
+   -------------------------------------------------------------------------- */
+
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--line-soft);
+}
+.masthead-inner {
+  height: 68px;
+  display: grid;
+  /* Nav takes its natural width (it varies with auth state); search
+     fills the middle up to 520px, centred in whatever space remains. */
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 32px;
+}
+.masthead-search {
+  width: 100%;
+  max-width: 520px;
+  justify-self: center;
+}
+.masthead-nav {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.masthead-link {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: none;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.masthead-link:hover { background: var(--surface); }
+@media (max-width: 768px) {
+  .masthead-inner {
+    height: 60px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .masthead-search { display: none; }
+}
+
+/* Peer actions (the show page's Write Review / Attended pair).
+   The two are deliberately equal-weight alternatives, so the accent is
+   spent on INTERACTION and SELECTED state rather than on permanently
+   ranking one above the other.
+
+   Border and fill are driven by custom properties, NOT by plain
+   border/background declarations here. Inline styles beat stylesheet
+   rules, so inline styles read `var(--peer-*)` and these rules reassign
+   the variables — which wins because the inline style never declares the
+   variables itself. */
+.peer-action {
+  border: 1px solid var(--peer-border, transparent);
+  background-color: var(--peer-bg, var(--surface));
+  color: var(--peer-color, var(--ink));
+  transition:
+    border-color 130ms ease,
+    background-color 130ms ease,
+    color 130ms ease;
+}
+.peer-action:hover,
+.peer-action:focus-visible {
+  --peer-bg: var(--surface-2);
+}
+/* Selected (attended). The accent marks state, not priority. */
+.peer-action.is-selected {
+  --peer-border: rgba(179, 25, 124, 0.35);
+  --peer-bg: var(--accent-soft);
+  --peer-color: var(--accent-ink);
+}
+.peer-action.is-selected:hover,
+.peer-action.is-selected:focus-visible {
+  --peer-border: rgba(179, 25, 124, 0.6);
+  --peer-bg: rgba(224, 33, 155, 0.12);
+}
+
+/* Loading placeholder shimmer. */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.skeleton {
+  background: var(--surface-2);
+  border-radius: 8px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+  .card-link, .btn, .peer-action { transition: none; }
 }

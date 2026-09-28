@@ -5,11 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authHeaders, useAuthUser } from "./lib/auth";
 import ShowSearch from "./components/ShowSearch";
-import Masthead from "./components/Masthead";
 import ReviewCard from "./components/ReviewCard";
 import LoadMore from "./components/LoadMore";
-import PageGlow from "./components/PageGlow";
-import WriteReviewRow from "./components/WriteReviewRow";
+import WriteReviewHero from "./components/WriteReviewHero";
 import SegmentedTabs from "./components/SegmentedTabs";
 import { formatShowDate } from "./lib/dateFormat";
 
@@ -169,184 +167,204 @@ export default function Home() {
     }
   }
 
+  // The newest review leads the feed in the wide featured treatment; the
+  // rest follow two-up. Attendance rows (Following tab) stay quiet,
+  // full-width lines between review rows.
+  const featuredIndex = feed.findIndex((i) => i.type === "review");
+  const featured = featuredIndex >= 0 ? feed[featuredIndex] : null;
+  const rest = feed.filter((_, i) => i !== featuredIndex);
+
   return (
-    <main
-      style={{
-        background: "#0a0a0a",
-        minHeight: "100vh",
-        color: "#f4f1ea",
-        padding: "24px",
-      }}
-    >
-      <PageGlow />
+    <main className="page">
+      {/* Mobile only: the masthead drops its search column on phones, and
+          search is the feed's primary discovery behaviour. */}
+      <div className="container show-mobile" style={{ paddingTop: "12px" }}>
+        <ShowSearch />
+      </div>
 
-      <div
-        style={{
-          maxWidth: "700px",
-          margin: "0 auto",
-          // Above PageGlow, which is a fixed layer at z-index 0.
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        {/* The magenta WriteReviewRow below is this page's Write Review
-            entry point, so the masthead pill is suppressed here. */}
-        <Masthead hideWriteReview />
+      <WriteReviewHero />
 
-        {/* Full-width search — primary discovery behavior, always visible. */}
-        <ShowSearch fullWidth />
-
-        <WriteReviewRow />
-
-        {/* Section heading + scope tabs. */}
+      <section className="band">
         <div
+          className="container"
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "12px",
-            marginTop: "24px",
-            marginBottom: "4px",
+            paddingTop: "clamp(32px, 5vw, 72px)",
+            paddingBottom: "clamp(40px, 6vw, 96px)",
           }}
         >
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "20px",
-              fontWeight: 600,
-              letterSpacing: "-0.01em",
-            }}
-          >
-            Latest Reviews
-          </h1>
-          <SegmentedTabs
-            label="Feed scope"
-            value={scope}
-            onChange={selectScope}
-            options={[
-              { value: "all", label: "All" },
-              { value: "following", label: "Following" },
-            ]}
-          />
-        </div>
-
-        {loading && (
-          <div style={{ color: "#888", fontSize: "14px", padding: "20px 0" }}>
-            Loading…
-          </div>
-        )}
-
-        {!loading && error && (
-          <div
-            style={{ color: "#ff8080", fontSize: "14px", padding: "20px 0" }}
-          >
-            {error}
-          </div>
-        )}
-
-        {!loading && !error && feed.length === 0 && (
-          <div
-            style={{
-              color: "#888",
-              fontSize: "15px",
-              padding: "24px 0",
-              lineHeight: 1.6,
-            }}
-          >
-            {scope === "following" ? (
-              authUser ? (
-                <>
-                  You&rsquo;re not following anyone yet. Open a user&rsquo;s
-                  profile to follow them.
-                </>
-              ) : (
-                <>
-                  <Link
-                    href="/signin?next=/?scope=following"
-                    style={{
-                      color: "#f4f1ea",
-                      textDecoration: "underline",
-                      textUnderlineOffset: "3px",
-                    }}
-                  >
-                    Sign in
-                  </Link>{" "}
-                  to see reviews from people you follow.
-                </>
-              )
-            ) : authUser ? (
-              "No reviews yet. Be the first to write one."
-            ) : (
-              "No reviews yet. Sign up to write the first one."
-            )}
-          </div>
-        )}
-
-        {!loading && !error && feed.length > 0 && (
+          {/* Section heading + scope tabs. */}
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
-              // Cards carry their own border and fill, so they need far
-              // less separation than the borderless items did at 46px.
-              gap: "15px",
-              marginTop: "14px",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "16px",
+              marginBottom: "28px",
             }}
           >
-            {feed.map((item, i) =>
-              item.type === "review" ? (
-                <ReviewCard
-                  key={`r:${item.reviewId}`}
-                  item={item}
-                  viewerHandle={authUser?.handle ?? null}
-                  tintIndex={i}
-                />
-              ) : (
-                // Attendance — deliberately quiet: a single muted line,
-                // clearly secondary to reviews, links to user + show.
-                <div
-                  key={`a:${item.attendanceId}`}
-                  style={{
-                    fontSize: "13px",
-                    color: "#6a6a6a",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  <Link
-                    href={`/user/${item.userHandle}`}
-                    style={{ color: "#8a8a8a", textDecoration: "none" }}
-                  >
-                    @{item.userHandle}
-                  </Link>
-                  <span> attended </span>
-                  <Link
-                    href={`/show/${item.show.id}`}
-                    style={{ color: "#8a8a8a", textDecoration: "none" }}
-                  >
-                    {item.show.artist}
-                  </Link>
-                  <span style={{ color: "#5a5a5a" }}>
-                    {" · "}
-                    {item.show.venue}
-                    {" · "}
-                    {formatShowDate(item.show.localDate)}
-                  </span>
-                </div>
-              ),
-            )}
-          </div>
-        )}
-
-        {!loading && !error && nextCursor && (
-          <div style={{ marginTop: "46px" }}>
-            <LoadMore
-              onClick={loadMore}
-              loading={loadingMore}
-              error={moreError}
+            <h2 className="h2">Latest Reviews</h2>
+            <SegmentedTabs
+              label="Feed scope"
+              value={scope}
+              onChange={selectScope}
+              options={[
+                { value: "all", label: "All" },
+                { value: "following", label: "Following" },
+              ]}
             />
           </div>
-        )}
-      </div>
+
+          {loading && (
+            <div className="stack" style={{ gap: "24px" }} aria-busy="true">
+              <span className="sr-only">Loading…</span>
+              <div className="card card-lg" style={{ height: "280px" }}>
+                <div className="skeleton" style={{ width: "40%", height: "44px" }} />
+                <div className="skeleton" style={{ width: "22%", height: "18px", marginTop: "18px" }} />
+                <div className="skeleton" style={{ width: "70%", height: "22px", marginTop: "40px" }} />
+              </div>
+              <div className="grid-2">
+                {[0, 1].map((n) => (
+                  <div key={n} className="card" style={{ height: "220px" }}>
+                    <div className="skeleton" style={{ width: "55%", height: "30px" }} />
+                    <div className="skeleton" style={{ width: "30%", height: "16px", marginTop: "14px" }} />
+                    <div className="skeleton" style={{ width: "85%", height: "18px", marginTop: "24px" }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="notice notice-error">{error}</div>
+          )}
+
+          {!loading && !error && feed.length === 0 && (
+            <div
+              className="card"
+              style={{
+                textAlign: "center",
+                padding: "56px 24px",
+                fontSize: "17px",
+                lineHeight: 1.5,
+                color: "var(--ink-2)",
+              }}
+            >
+              {scope === "following" ? (
+                authUser ? (
+                  <>
+                    You&rsquo;re not following anyone yet. Open a user&rsquo;s
+                    profile to follow them, or{" "}
+                    <Link href="/people" className="link">
+                      find people
+                    </Link>
+                    .
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/signin?next=/?scope=following"
+                      className="link"
+                    >
+                      Sign in
+                    </Link>{" "}
+                    to see reviews from people you follow.
+                  </>
+                )
+              ) : authUser ? (
+                "No reviews yet. Be the first to write one."
+              ) : (
+                "No reviews yet. Sign up to write the first one."
+              )}
+            </div>
+          )}
+
+          {!loading && !error && feed.length > 0 && (
+            <div className="stack" style={{ gap: "24px" }}>
+              {featured && featured.type === "review" && (
+                <ReviewCard
+                  item={featured}
+                  viewerHandle={authUser?.handle ?? null}
+                  featured
+                />
+              )}
+              {rest.length > 0 && (
+                <div className="grid-2">
+                  {rest.map((item) =>
+                    item.type === "review" ? (
+                      <ReviewCard
+                        key={`r:${item.reviewId}`}
+                        item={item}
+                        viewerHandle={authUser?.handle ?? null}
+                      />
+                    ) : (
+                      // Attendance — deliberately quiet: a single muted
+                      // line spanning the grid, clearly secondary to
+                      // reviews, links to user + show.
+                      <div
+                        key={`a:${item.attendanceId}`}
+                        className="meta"
+                        style={{
+                          gridColumn: "1 / -1",
+                          display: "flex",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: "6px",
+                          padding: "4px 4px",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        <svg
+                          width="15"
+                          height="15"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                        <Link
+                          href={`/user/${item.userHandle}`}
+                          className="link-quiet"
+                          style={{ color: "var(--ink)", fontWeight: 600 }}
+                        >
+                          @{item.userHandle}
+                        </Link>
+                        <span>attended</span>
+                        <Link
+                          href={`/show/${item.show.id}`}
+                          className="link-quiet"
+                          style={{ color: "var(--ink)", fontWeight: 600 }}
+                        >
+                          {item.show.artist}
+                        </Link>
+                        <span>
+                          · {item.show.venue} ·{" "}
+                          {formatShowDate(item.show.localDate)}
+                        </span>
+                      </div>
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loading && !error && nextCursor && (
+            <div style={{ marginTop: "48px" }}>
+              <LoadMore
+                onClick={loadMore}
+                loading={loadingMore}
+                error={moreError}
+              />
+            </div>
+          )}
+        </div>
+      </section>
     </main>
   );
 }

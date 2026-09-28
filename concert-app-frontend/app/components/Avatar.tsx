@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Round user avatar: a colored circle with the first letter of the display
- * name, falling back to the handle. The color is deterministic per-handle,
- * so the same user always gets the same circle.
+ * Round user avatar: an ink circle with the first letter of the display
+ * name, falling back to the handle. Deliberately monochrome — the site's
+ * only saturated colour is the magenta accent, so avatars don't compete.
  *
  * There is deliberately no image branch and no `avatarUrl` prop. This used
  * to render any URL a user had saved, which meant every viewer's browser
@@ -21,31 +21,11 @@ type Props = {
   size?: number;
 };
 
-const PALETTE = [
-  "#ff4d6d",
-  "#fb923c",
-  "#fbbf24",
-  "#4ade80",
-  "#22d3ee",
-  "#7dafff",
-  "#a78bfa",
-  "#f472b6",
-];
-
-function colorFor(handle: string): string {
-  let hash = 0;
-  for (let i = 0; i < handle.length; i++) {
-    hash = (hash * 31 + handle.charCodeAt(i)) | 0;
-  }
-  return PALETTE[Math.abs(hash) % PALETTE.length] ?? "#7dafff";
-}
-
 export default function Avatar({ handle, name, size = 36 }: Props) {
   const label = name?.trim() || `@${handle}`;
 
   const seed = (name?.trim() || handle).trim();
   const initial = seed.charAt(0).toUpperCase() || "?";
-  const bg = colorFor(handle);
 
   return (
     <div
@@ -55,12 +35,12 @@ export default function Avatar({ handle, name, size = 36 }: Props) {
         width: size,
         height: size,
         borderRadius: "50%",
-        background: bg,
+        background: "var(--ink)",
         color: "white",
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        fontWeight: "bold",
+        fontWeight: 600,
         fontSize: Math.round(size * 0.45),
         lineHeight: 1,
         flexShrink: 0,
