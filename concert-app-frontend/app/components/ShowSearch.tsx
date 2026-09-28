@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getToken, authHeaders } from "../lib/auth";
+import { formatShowDate } from "../lib/dateFormat";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -344,14 +345,9 @@ export default function ShowSearch({
             const isPromoting =
               item.source === "ticketmaster" &&
               promotingKey === item.externalId;
-            const localDate = new Date(item.localDate);
-            const dateLabel = isNaN(localDate.getTime())
-              ? item.localDate
-              : localDate.toLocaleDateString(undefined, {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                });
+            const dateLabel = formatShowDate(item.localDate, {
+              alwaysYear: true,
+            });
             const key =
               item.source === "db"
                 ? `db_${item.id}`

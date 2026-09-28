@@ -12,6 +12,7 @@ import ReviewItem, {
 import LoadMore from "../../components/LoadMore";
 import ReviewSurface from "../../components/ReviewSurface";
 import SegmentedTabs from "../../components/SegmentedTabs";
+import { formatShowDate } from "../../lib/dateFormat";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
@@ -412,14 +413,10 @@ export default function ArtistPage() {
                             className="meta"
                             style={{ marginTop: "2px" }}
                           >
-                            {new Date(review.show.localDate).toLocaleDateString(
-                              undefined,
-                              {
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                              },
-                            )}
+                            {formatShowDate(review.show.localDate, {
+                              longMonth: true,
+                              alwaysYear: true,
+                            })}
                           </div>
                         </Link>
                       }
