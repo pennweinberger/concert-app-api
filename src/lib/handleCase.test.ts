@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   inspectHandleCase,
   describeConnection,
@@ -133,6 +135,59 @@ describe("describeConnection", () => {
   it("handles a missing or unparseable URL without throwing", () => {
     expect(describeConnection(undefined).hostFingerprint).toBeNull();
     expect(describeConnection("not a url").hostFingerprint).toBeNull();
+  });
+});
+
+// Regression protection for the two pieces of configuration that silently
+// switch case-insensitive handles off. Neither has a runtime code path that
+// would fail visibly if it were removed, so assert them here.
+describe("case-insensitive handle configuration", () => {
+  const root = process.cwd();
+  const schema = readFileSync(join(root, "prisma/schema.prisma"), "utf8");
+  const handleLine = schema
+    .split("\n")
+    .find((l) => /^\s*handle\s+String/.test(l));
+
+  // If this test fails, differently-cased logins break under concurrency
+  // ONLY — verified against real Postgres with real Prisma 6.19.2: with the
+  // column citext but the annotation absent, three concurrent findUnique
+  // calls batch into `WHERE handle IN (...)` and all three return nothing.
+  // Single-request testing would not catch it.
+  it("keeps @db.Citext on User.handle", () => {
+    expect(handleLine).toBeDefined();
+    expect(handleLine).toContain("@db.Citext");
+    expect(handleLine).toContain("@unique");
+  });
+
+  it("does not lowercase handles anywhere in the schema", () => {
+    // A `handleLower` mirror column would mean the DB is no longer the single
+    // source of truth for case-insensitivity, and would desync on the
+    // anonymization path in accountLifecycle.ts.
+    expect(schema).not.toContain("handleLower");
+  });
+
+  const migrationDir = join(
+    root,
+    "prisma/migrations/20260930010000_handle_citext",
+  );
+
+  it("ships the migration that makes the column citext", () => {
+    const sql = readFileSync(join(migrationDir, "migration.sql"), "utf8");
+    expect(sql).toContain("CREATE EXTENSION IF NOT EXISTS citext");
+    // Supabase's conventional schema, verified to resolve on Preview.
+    expect(sql).toContain("WITH SCHEMA extensions");
+    // Fully qualified so the DDL cannot depend on the migration connection's
+    // search_path.
+    expect(sql).toContain(
+      'ALTER TABLE "User" ALTER COLUMN "handle" TYPE extensions.citext',
+    );
+  });
+
+  it("never rewrites or lowercases existing handles", () => {
+    const sql = readFileSync(join(migrationDir, "migration.sql"), "utf8");
+    expect(sql).not.toMatch(/\bUPDATE\b/i);
+    expect(sql).not.toMatch(/\blower\s*\(/i);
+    expect(sql).not.toMatch(/\bDELETE\b/i);
   });
 });
 
