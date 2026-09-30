@@ -1,0 +1,33 @@
+-- Case-insensitive handles.
+--
+-- `penn`, `Penn`, `PENN` and `@Penn` must all authenticate the same account,
+-- the same three must be one taken handle at registration, and the stored
+-- capitalization the user chose must survive untouched.
+--
+-- citext does all of that at the column, so no query in the application
+-- changes: the existing User_handle_key unique index and every
+-- findUnique({ where: { handle } }) become case-insensitive as they stand.
+-- It also avoids Prisma's mode:"insensitive", which compiles to ILIKE without
+-- escaping `_` or `%` — handles may contain underscores (`atd_smoke`), which
+-- would have matched `atdXsmoke` too.
+
+-- Supabase's conventional home for extensions. Verified on Afterset Preview
+-- before this migration was written: both DATABASE_URL and DIRECT_URL carry
+-- no `?schema=` parameter, so Prisma inherits the default search_path
+-- ("$user", public, extensions) and resolves `citext` from here. lib/
+-- handleCase.ts asserts that at runtime and pages loudly if it ever stops
+-- being true.
+CREATE EXTENSION IF NOT EXISTS citext WITH SCHEMA extensions;
+
+-- Fully qualified on purpose: the DDL must not depend on whatever
+-- search_path DIRECT_URL happens to present at migration time. The resulting
+-- column has the same type either way, so this affects only whether the
+-- statement resolves, never runtime behaviour.
+--
+-- This rebuilds User_handle_key with citext comparison, which is what makes
+-- the EXISTING unique constraint case-insensitive. If any case-colliding pair
+-- of handles existed, the index rebuild would fail with 23505 naming the
+-- duplicate and the column would be left untouched — the migration cannot
+-- silently merge or rename anyone. Production was audited first: 11 users,
+-- zero case-colliding groups.
+ALTER TABLE "User" ALTER COLUMN "handle" TYPE extensions.citext;
