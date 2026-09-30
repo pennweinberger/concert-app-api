@@ -34,6 +34,8 @@ import {
 import { NOT_BLOCKED, NOT_BLOCKED_COUNT } from "./lib/moderation.js";
 import { resolveRateLimitStore } from "./lib/rateLimitStore.js";
 import { verifyTurnstile } from "./lib/turnstile.js";
+import { normalizeHandle } from "./lib/handles.js";
+import { inspectHandleCase, type HandleCaseReport } from "./lib/handleCase.js";
 import {
   activeMarketShowFilter,
   isShowInActiveMarket,
@@ -199,16 +201,10 @@ app.setErrorHandler((err, request, reply) => {
 
 // --- Validation helpers ----------------------------------------------------
 
-function normalizeHandle(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const handle = raw.trim().replace(/^@/, "");
-  if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) return null;
-  // Reserve leading underscore for system handles (e.g. _deleted_*
-  // tombstones from anonymized accounts). Existing users without
-  // leading underscore are unaffected.
-  if (handle.startsWith("_")) return null;
-  return handle;
-}
+// normalizeHandle now lives in lib/handles.ts so its rules can be tested
+// directly. It still does not lowercase: case-insensitivity is the database's
+// job (User.handle is citext), which preserves the user's chosen display
+// capitalization.
 
 function validPassword(raw: unknown): raw is string {
   return typeof raw === "string" && raw.length >= 8 && raw.length <= 128;
@@ -394,8 +390,59 @@ async function loadViewerLikedSet(
   return new Set(rows.map((r) => r.reviewId));
 }
 
+// Handle case-insensitivity is enforced entirely by the database, so nothing
+// in the request path would notice if it were switched off — see
+// lib/handleCase.ts for how that can happen silently. Assert it instead, once
+// per process, and escalate hard if it is off: every differently-cased login
+// would be failing while exact-case ones kept working, which is close to
+// invisible from the outside.
+let handleCase: HandleCaseReport | null = null;
+
+async function handleCaseStatus(): Promise<HandleCaseReport> {
+  if (handleCase) return handleCase;
+  const report = await inspectHandleCase((sql) =>
+    prisma.$queryRawUnsafe<unknown[]>(sql),
+  );
+  // Only cache a real answer. A failed inspection (database briefly
+  // unreachable on a cold start) must not pin a false negative for the life
+  // of the process.
+  if (report.error) return report;
+  handleCase = report;
+  if (!report.citextResolvable) {
+    // Permanent until a human fixes it, and it silently breaks sign-in for
+    // anyone whose stored capitalization differs from what they type — page
+    // someone, same as a Turnstile misconfiguration.
+    app.log.fatal(
+      { searchPath: report.searchPath, handleColumnType: report.handleColumnType },
+      "citext unresolvable on the Prisma connection — handle case-insensitivity is SILENTLY OFF",
+    );
+    if (process.env.SENTRY_DSN_API) {
+      Sentry.captureException(
+        new Error(
+          "citext unresolvable on the Prisma connection: handle lookups are case-sensitive",
+        ),
+        {
+          level: "fatal",
+          tags: { area: "handles", kind: "citext_unresolvable" },
+          extra: {
+            searchPath: report.searchPath,
+            handleColumnType: report.handleColumnType,
+          },
+        },
+      );
+    }
+  }
+  return report;
+}
+
 app.get("/health", async () => {
-  return { ok: true };
+  // Liveness must not depend on the database, so a failed check reports null
+  // rather than turning /health into a 500.
+  const report = await handleCaseStatus().catch(() => null);
+  return {
+    ok: true,
+    handleCaseInsensitive: report && !report.error ? report.citextResolvable : null,
+  };
 });
 
 // --- Auth ------------------------------------------------------------------

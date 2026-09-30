@@ -39,7 +39,12 @@ enum ReportStatus {
 
 model User {
   id              String   @id @default(cuid())
-  handle          String   @unique
+  // LOAD-BEARING: @db.Citext is not cosmetic. Without it Prisma batches
+  // concurrent findUnique calls into `WHERE handle IN ($1,$2,$3)`, and IN on
+  // a citext column is case-SENSITIVE — differently-cased logins then miss,
+  // but only when two land in the same tick, so it passes single-user testing
+  // and fails under load. See lib/handleCase.ts and handleCase.test.ts.
+  handle          String   @unique @db.Citext
   email           String?  @unique
   emailVerifiedAt DateTime?
   passwordHash    String?
