@@ -19,6 +19,12 @@ import {
   assertDiceRunHealthy,
   DiceIngestHealthError,
 } from "../lib/diceHealth.js";
+import {
+  inspectHandleCase,
+  describeConnection,
+  fingerprint,
+  CITEXT_SCHEMA_SQL,
+} from "../lib/handleCase.js";
 
 export function registerInternalRoutes(
   app: FastifyInstance,
@@ -344,4 +350,79 @@ export function registerInternalRoutes(
 
   app.post("/internal/ingest/ticketmaster", handleTicketmasterIngest);
   app.get("/internal/ingest/ticketmaster", handleTicketmasterIngest);
+
+  // Database identity + handle-case evidence, for verifying a deployment
+  // against the database it is ACTUALLY talking to.
+  //
+  // DATABASE_URL and DIRECT_URL are Vercel `sensitive` variables: their
+  // values cannot be read back by the CLI, the REST API or the dashboard, by
+  // anyone. So the only way to establish which database an environment points
+  // at is to ask the running deployment. Everything returned here is derived
+  // and one-way — the host appears only as a SHA-256 prefix, so two
+  // environments can be compared for equality without either connection
+  // string being exposed. CRON_SECRET-gated, never public.
+  app.get(
+    "/internal/diagnostics/database",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const cronSecret = process.env.CRON_SECRET;
+      if (!cronSecret) {
+        return reply.status(503).send({ error: "Diagnostics not configured" });
+      }
+      const auth = request.headers["authorization"];
+      if (!auth || auth !== `Bearer ${cronSecret}`) {
+        return reply.status(401).send({ error: "Unauthorized" });
+      }
+
+      const runSql = (sql: string) => prisma.$queryRawUnsafe<unknown[]>(sql);
+      const handleCase = await inspectHandleCase(runSql);
+
+      const one = async (sql: string, key: string): Promise<string | null> => {
+        try {
+          const rows = (await runSql(sql)) as Record<string, unknown>[];
+          const v = rows[0]?.[key];
+          return v === null || v === undefined ? null : String(v);
+        } catch {
+          return null;
+        }
+      };
+
+      // A handle-set fingerprint distinguishes two databases holding
+      // different users without disclosing who they are.
+      let userCount: number | null = null;
+      let handleSetFingerprint: string | null = null;
+      try {
+        const rows = (await prisma.user.findMany({
+          select: { handle: true },
+          orderBy: { handle: "asc" },
+        })) as { handle: string }[];
+        userCount = rows.length;
+        handleSetFingerprint = fingerprint(rows.map((r) => r.handle).join(","));
+      } catch {
+        /* reported as null */
+      }
+
+      return reply.status(200).send({
+        vercelEnv: process.env.VERCEL_ENV ?? null,
+        databaseUrl: describeConnection(process.env.DATABASE_URL),
+        directUrl: describeConnection(process.env.DIRECT_URL),
+        currentDatabase: await one("select current_database() as d", "d"),
+        searchPath: handleCase.searchPath,
+        citextResolvable: handleCase.citextResolvable,
+        citextInstalledInSchema: await one(CITEXT_SCHEMA_SQL, "s"),
+        handleColumnType: handleCase.handleColumnType,
+        migrationsApplied: await one(
+          "select count(*)::int as n from _prisma_migrations where finished_at is not null",
+          "n",
+        ),
+        latestMigration: await one(
+          "select migration_name as m from _prisma_migrations" +
+            " where finished_at is not null order by finished_at desc limit 1",
+          "m",
+        ),
+        userCount,
+        handleSetFingerprint,
+        ...(handleCase.error ? { inspectionError: handleCase.error } : {}),
+      });
+    },
+  );
 }
