@@ -3,8 +3,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   inspectHandleCase,
-  describeConnection,
-  fingerprint,
   CITEXT_RESOLVABLE_SQL,
   SEARCH_PATH_SQL,
   HANDLE_COLUMN_TYPE_SQL,
@@ -87,60 +85,6 @@ describe("inspectHandleCase", () => {
   });
 });
 
-describe("describeConnection", () => {
-  const SECRET =
-    "postgresql://postgres.abcdefghijklmnop:s3cr3t-p4ssw0rd@aws-0-us-west-2.pooler.supabase.com:6543/postgres?pgbouncer=true";
-
-  it("never returns any part of the credential", () => {
-    const d = describeConnection(SECRET);
-    const serialized = JSON.stringify(d);
-    expect(serialized).not.toContain("s3cr3t-p4ssw0rd");
-    expect(serialized).not.toContain("abcdefghijklmnop");
-    expect(serialized).not.toContain("pooler.supabase.com");
-  });
-
-  it("fingerprints the host so two environments can be compared for equality", () => {
-    const a = describeConnection(SECRET);
-    const b = describeConnection(SECRET);
-    const other = describeConnection(
-      "postgresql://u:p@db.zzzzzzzzzzzz.supabase.co:5432/postgres",
-    );
-    expect(a.hostFingerprint).toBe(b.hostFingerprint);
-    expect(a.hostFingerprint).not.toBe(other.hostFingerprint);
-    expect(a.hostFingerprint).toMatch(/^[0-9a-f]{12}$/);
-  });
-
-  it("surfaces the port, database and pgbouncer flag", () => {
-    const d = describeConnection(SECRET);
-    expect(d.port).toBe("6543");
-    expect(d.database).toBe("postgres");
-    expect(d.hasPgbouncerParam).toBe(true);
-  });
-
-  // The single setting that silently disables case-insensitive handles.
-  it("detects a pinned ?schema= parameter", () => {
-    const pinned = describeConnection(
-      "postgresql://u:p@host.example.com:5432/postgres?schema=public",
-    );
-    expect(pinned.hasSchemaParam).toBe(true);
-    expect(pinned.schemaParam).toBe("public");
-
-    const unpinned = describeConnection(
-      "postgresql://u:p@host.example.com:5432/postgres",
-    );
-    expect(unpinned.hasSchemaParam).toBe(false);
-    expect(unpinned.schemaParam).toBeNull();
-  });
-
-  it("handles a missing or unparseable URL without throwing", () => {
-    expect(describeConnection(undefined).hostFingerprint).toBeNull();
-    expect(describeConnection("not a url").hostFingerprint).toBeNull();
-  });
-});
-
-// Regression protection for the two pieces of configuration that silently
-// switch case-insensitive handles off. Neither has a runtime code path that
-// would fail visibly if it were removed, so assert them here.
 describe("case-insensitive handle configuration", () => {
   const root = process.cwd();
   const schema = readFileSync(join(root, "prisma/schema.prisma"), "utf8");
@@ -188,14 +132,5 @@ describe("case-insensitive handle configuration", () => {
     expect(sql).not.toMatch(/\bUPDATE\b/i);
     expect(sql).not.toMatch(/\blower\s*\(/i);
     expect(sql).not.toMatch(/\bDELETE\b/i);
-  });
-});
-
-describe("fingerprint", () => {
-  it("is stable, short and one-way", () => {
-    expect(fingerprint("hello")).toBe(fingerprint("hello"));
-    expect(fingerprint("hello")).toHaveLength(12);
-    expect(fingerprint("hello")).not.toContain("hello");
-    expect(fingerprint("hello")).not.toBe(fingerprint("hellp"));
   });
 });

@@ -44,6 +44,10 @@ model User {
   // a citext column is case-SENSITIVE — differently-cased logins then miss,
   // but only when two land in the same tick, so it passes single-user testing
   // and fails under load. See lib/handleCase.ts and handleCase.test.ts.
+  //
+  // Removing this line, or rolling back to a build that predates it while the
+  // column is still citext, reintroduces that failure silently. lib/
+  // handleCase.ts documents the rollback requirement in full.
   handle          String   @unique @db.Citext
   email           String?  @unique
   emailVerifiedAt DateTime?
