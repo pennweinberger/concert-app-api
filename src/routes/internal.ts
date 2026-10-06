@@ -383,6 +383,13 @@ export function registerInternalRoutes(
 
       const runSql = (sql: string) => prisma.$queryRawUnsafe<unknown[]>(sql);
       const handleCase = await inspectHandleCase(runSql);
+      if (handleCase.error) {
+        // Safe here, unlike in the response body: logs are not public.
+        app.log.error(
+          { err: handleCase.error },
+          "database diagnostics inspection failed",
+        );
+      }
 
       const one = async (sql: string, key: string): Promise<string | null> => {
         try {
@@ -429,7 +436,12 @@ export function registerInternalRoutes(
         ),
         userCount,
         handleSetFingerprint,
-        ...(handleCase.error ? { inspectionError: handleCase.error } : {}),
+        // Deliberately a flag, never the message. Prisma connection errors
+        // embed the real host and port ("Can't reach database server at
+        // `db.<ref>.supabase.co:5432`"), so returning err.message here would
+        // hand out the one thing this endpoint is careful to only ever
+        // fingerprint. The message is logged instead.
+        ...(handleCase.error ? { inspectionFailed: true } : {}),
       });
     },
   );

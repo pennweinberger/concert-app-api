@@ -435,14 +435,21 @@ async function handleCaseStatus(): Promise<HandleCaseReport> {
   return report;
 }
 
-app.get("/health", async () => {
-  // Liveness must not depend on the database, so a failed check reports null
-  // rather than turning /health into a 500.
+app.get("/health", async (_request, reply) => {
+  // Deliberately does not report WHY. /health is public, so it keeps its
+  // original { ok: true } contract and never names citext, handles or the
+  // search_path — a public endpoint describing its own database internals
+  // just tells an attacker where to push. The assertion still runs, and a
+  // real regression still turns the overall status unhealthy; the detail
+  // goes to the logs and to Sentry, which are not public.
   const report = await handleCaseStatus().catch(() => null);
-  return {
-    ok: true,
-    handleCaseInsensitive: report && !report.error ? report.citextResolvable : null,
-  };
+
+  // Only a confirmed negative counts. A failed inspection (database briefly
+  // unreachable on a cold start) must not take liveness down with it.
+  if (report && !report.error && !report.citextResolvable) {
+    return reply.status(503).send({ ok: false });
+  }
+  return { ok: true };
 });
 
 // --- Auth ------------------------------------------------------------------
