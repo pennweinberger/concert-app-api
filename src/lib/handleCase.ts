@@ -24,8 +24,32 @@
 // parameter entirely, so a raw driver reports citext as resolvable even
 // while Prisma cannot see it — a raw-driver check would be reassuring and
 // wrong.
-
-import { createHash } from "node:crypto";
+//
+// ---------------------------------------------------------------------------
+// ROLLBACK REQUIREMENT — read before reverting a deployment
+//
+// Do not perform a code-only Vercel rollback across the
+// 20260930010000_handle_citext migration. Once User.handle is `citext`, an
+// older build whose Prisma schema lacks `@db.Citext` can silently behave
+// case-sensitively under batched queries. Rollback requires either rolling
+// forward, or restoring User.handle to `text` together with the old
+// application code.
+//
+// Why: `prisma migrate deploy` never un-applies a migration, so rolling back
+// the deployment leaves the column `citext` while serving a build whose
+// generated client does not know that. Prisma then batches concurrent
+// findUnique calls into `WHERE handle IN (...)`, which on citext is
+// case-SENSITIVE. Measured on real Postgres: single lookups still succeed,
+// two concurrent differently-cased lookups both return nothing. It is
+// load-dependent and silent, and an older build has no copy of this guard to
+// catch it.
+//
+// Reverting the column (`ALTER TABLE "User" ALTER COLUMN "handle" TYPE text`)
+// is lossless and cannot fail — citext guaranteed no case-colliding pair was
+// ever created. But once back on `text` such a pair CAN be created, and
+// re-applying citext afterwards is refused (23505) until it is resolved.
+// There is deliberately no automatic down migration.
+// ---------------------------------------------------------------------------
 
 /**
  * Runs a parameterless SQL string and returns the rows. In production this
@@ -43,11 +67,6 @@ export const SEARCH_PATH_SQL = "show search_path";
 export const HANDLE_COLUMN_TYPE_SQL =
   'select format_type(atttypid, atttypmod) as t from pg_attribute' +
   ' where attrelid = \'"User"\'::regclass and attname = \'handle\'';
-
-/** Which schema the extension was installed into, if at all. */
-export const CITEXT_SCHEMA_SQL =
-  "select n.nspname as s from pg_extension e" +
-  " join pg_namespace n on n.oid = e.extnamespace where e.extname = 'citext'";
 
 export type HandleCaseReport = {
   /** The one that matters: false means case-insensitivity is OFF. */
@@ -105,62 +124,4 @@ export async function inspectHandleCase(
       error: err instanceof Error ? err.message : String(err),
     };
   }
-}
-
-/**
- * Non-secret description of a connection string, for proving WHICH database
- * a deployment is talking to without revealing how to reach it.
- *
- * The host is reduced to a SHA-256 prefix: two deployments can be compared
- * for equality without either connection string being exposed. Nothing
- * here can round-trip to a credential.
- */
-export type ConnectionDescription = {
-  hostFingerprint: string | null;
-  port: string | null;
-  database: string | null;
-  /** The thing that silently breaks citext resolution. */
-  hasSchemaParam: boolean;
-  schemaParam: string | null;
-  hasPgbouncerParam: boolean;
-};
-
-export function describeConnection(
-  url: string | undefined,
-): ConnectionDescription {
-  if (!url) {
-    return {
-      hostFingerprint: null,
-      port: null,
-      database: null,
-      hasSchemaParam: false,
-      schemaParam: null,
-      hasPgbouncerParam: false,
-    };
-  }
-  try {
-    const u = new URL(url);
-    return {
-      hostFingerprint: fingerprint(u.hostname),
-      port: u.port || null,
-      database: u.pathname.replace(/^\//, "") || null,
-      hasSchemaParam: u.searchParams.has("schema"),
-      schemaParam: u.searchParams.get("schema"),
-      hasPgbouncerParam: u.searchParams.has("pgbouncer"),
-    };
-  } catch {
-    return {
-      hostFingerprint: null,
-      port: null,
-      database: null,
-      hasSchemaParam: false,
-      schemaParam: null,
-      hasPgbouncerParam: false,
-    };
-  }
-}
-
-/** Short, stable, one-way. Long enough that collisions aren't a concern. */
-export function fingerprint(value: string): string {
-  return createHash("sha256").update(value).digest("hex").slice(0, 12);
 }

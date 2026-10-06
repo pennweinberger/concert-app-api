@@ -1,5 +1,20 @@
 -- Case-insensitive handles.
 --
+-- ===========================================================================
+-- ROLLBACK REQUIREMENT — read before reverting a deployment
+--
+-- Do not perform a code-only Vercel rollback across this migration. Once
+-- User.handle is `citext`, an older build whose Prisma schema lacks
+-- `@db.Citext` can silently behave case-sensitively under batched queries.
+-- Rollback requires either rolling forward, or restoring User.handle to
+-- `text` together with the old application code.
+--
+-- `prisma migrate deploy` never un-applies a migration, so rolling back only
+-- the deployment leaves this column `citext` while serving a client that does
+-- not know it. See src/lib/handleCase.ts for the measured behaviour and for
+-- the runtime guard. There is deliberately no automatic down migration.
+-- ===========================================================================
+--
 -- `penn`, `Penn`, `PENN` and `@Penn` must all authenticate the same account,
 -- the same three must be one taken handle at registration, and the stored
 -- capitalization the user chose must survive untouched.
