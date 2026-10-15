@@ -688,6 +688,16 @@ export default function UserPage() {
                                 </button>
                               </span>
                             )}
+                            {/* Someone else's profile: their reviews are
+                                reportable here too, not only from the feed.
+                                Same gate as ReviewCard — signed in, never
+                                your own content. */}
+                            {!isOwnProfile && authUser && (
+                              <ReportMenu
+                                targetType="REVIEW"
+                                targetId={review.id}
+                              />
+                            )}
                           </>
                         }
                       />

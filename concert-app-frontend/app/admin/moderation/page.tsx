@@ -36,6 +36,61 @@ export default function AdminModerationPage() {
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [lookup, setLookup] = useState("");
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupBusy, setLookupBusy] = useState(false);
+
+  /**
+   * Open a user's admin page from a handle or a raw user id.
+   *
+   * The queue empties as soon as an item is actioned, so a link from a
+   * queue row is not a durable way back to Restore / Unsuspend. This is.
+   *
+   * Three cases, because /users/:handle deliberately 404s anonymized
+   * accounts (`if (!user || user.anonymizedAt)`):
+   *   - `_deleted_<id>`  the id IS the handle suffix — no lookup needed
+   *   - a cuid           already an id — go straight there
+   *   - anything else    resolve the handle via the public profile API
+   * Suspended users resolve normally; only `anonymizedAt` is filtered.
+   */
+  async function openUser(raw: string) {
+    const input = raw.trim().replace(/^@/, "");
+    if (!input) return;
+    setLookupError(null);
+
+    if (input.startsWith("_deleted_")) {
+      router.push(`/admin/users/${input.slice("_deleted_".length)}`);
+      return;
+    }
+    if (/^c[a-z0-9]{20,30}$/i.test(input)) {
+      router.push(`/admin/users/${input}`);
+      return;
+    }
+
+    setLookupBusy(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/users/${encodeURIComponent(input)}`,
+      );
+      if (!res.ok) {
+        setLookupError(
+          "No such handle. Anonymized accounts have no public profile — " +
+            "paste their user id (or their _deleted_… handle) instead.",
+        );
+        return;
+      }
+      const data = await res.json();
+      if (!data?.id) {
+        setLookupError("That profile returned no id.");
+        return;
+      }
+      router.push(`/admin/users/${data.id}`);
+    } catch {
+      setLookupError("Lookup failed. Check the connection and try again.");
+    } finally {
+      setLookupBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     if (!getToken()) {
@@ -100,6 +155,38 @@ export default function AdminModerationPage() {
           <div className="meta" style={{ marginTop: "10px", fontSize: "15px" }}>
             {authUser?.isAdmin === false ? "" : `${items.length} open item${items.length === 1 ? "" : "s"}`}
           </div>
+
+          {/* Durable entry point to a user's admin page. Actioning an item
+              resolves its reports and drops it from this queue, so without
+              this there is no way back to Restore / Unsuspend. */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              openUser(lookup);
+            }}
+            style={{ marginTop: "16px", display: "flex", gap: "8px", flexWrap: "wrap" }}
+          >
+            <input
+              value={lookup}
+              onChange={(e) => setLookup(e.target.value)}
+              placeholder="handle, _deleted_… or user id"
+              aria-label="Open a user's admin page by handle or id"
+              className="input"
+              style={{ maxWidth: "320px" }}
+            />
+            <button
+              type="submit"
+              className="btn btn-sm btn-outline"
+              disabled={lookupBusy || !lookup.trim()}
+            >
+              {lookupBusy ? "Opening…" : "Open user"}
+            </button>
+          </form>
+          {lookupError && (
+            <p className="meta" style={{ margin: "8px 0 0", fontSize: "13px" }}>
+              {lookupError}
+            </p>
+          )}
         </header>
       </div>
 
@@ -207,6 +294,19 @@ export default function AdminModerationPage() {
                     {it.author && (
                       <Link href={`/user/${it.author.handle}`} className="link" style={quickLinkStyle}>
                         Author profile + reviews
+                        <ArrowUpRight />
+                      </Link>
+                    )}
+                    {/* The admin surface that survives this item leaving the
+                        queue. Acting here resolves the reports, so this link
+                        is the only way back to Restore / Unsuspend. */}
+                    {it.author && (
+                      <Link
+                        href={`/admin/users/${it.author.id}`}
+                        className="link"
+                        style={quickLinkStyle}
+                      >
+                        Admin: manage user
                         <ArrowUpRight />
                       </Link>
                     )}
