@@ -6,6 +6,7 @@ import Link from "next/link";
 import { authHeaders, useAuthUser } from "../../lib/auth";
 import AttendanceButton from "../../components/AttendanceButton";
 import CommentsSection from "../../components/CommentsSection";
+import ReportMenu from "../../components/ReportMenu";
 import ReviewItem, {
   type ReviewItemData,
 } from "../../components/ReviewItem";
@@ -428,12 +429,27 @@ export default function ShowPage() {
                     <ReviewItem
                       review={review}
                       actions={
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <CommentsSection
-                            reviewId={review.id}
-                            initialCount={review.commentCount}
-                          />
-                        </div>
+                        <>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <CommentsSection
+                              reviewId={review.id}
+                              initialCount={review.commentCount}
+                            />
+                          </div>
+                          {/* Reporting used to exist only on the feed, which
+                              is time-ordered — so a review that scrolled out
+                              of it became unreportable. Gated exactly as
+                              ReviewCard does it: signed in, and never your
+                              own content (the API rejects self_report
+                              anyway). */}
+                          {authUser &&
+                            authUser.handle !== review.userHandle && (
+                              <ReportMenu
+                                targetType="REVIEW"
+                                targetId={review.id}
+                              />
+                            )}
+                        </>
                       }
                     />
                   </ReviewSurface>

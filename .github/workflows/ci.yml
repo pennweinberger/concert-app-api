@@ -15,5 +15,17 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+          # Two packages, two lockfiles — cache both or the frontend
+          # install pays full price on every run.
+          cache-dependency-path: |
+            package-lock.json
+            concert-app-frontend/package-lock.json
       - run: npm ci
       - run: npm test
+      # concert-app-frontend is a separate package with its own suite.
+      # Without these two steps its tests never run anywhere, which would
+      # make writing them pointless.
+      - name: Install frontend dependencies
+        run: npm --prefix concert-app-frontend ci
+      - name: Frontend tests
+        run: npm --prefix concert-app-frontend test
