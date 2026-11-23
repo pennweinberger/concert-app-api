@@ -58,6 +58,11 @@ import {
   MAX_SHOW_SEARCH_LIMIT,
 } from "./lib/showSearch.js";
 import {
+  searchArtists,
+  DEFAULT_ARTIST_SEARCH_LIMIT,
+  MAX_ARTIST_SEARCH_LIMIT,
+} from "./lib/artistSearch.js";
+import {
   resolveArtist,
   resolveVenue,
 } from "./lib/showResolution.js";
@@ -1408,6 +1413,33 @@ app.get(
         attendanceCount: s.attendanceCount,
       })),
     });
+  },
+);
+
+// Search our canonical Artist table. A SIBLING of /shows above, not a
+// new shape on it: show search behaviour is unchanged by this feature,
+// and keeping them apart means showSearch's own tests remain the
+// regression guard for that promise.
+//
+// Distinct from /artists/search, which is the live Ticketmaster
+// passthrough. This one never leaves Postgres. Route matching is safe —
+// Fastify resolves the static "/artists" and "/artists/search" segments
+// ahead of the "/artists/:id" parameter.
+app.get(
+  "/artists",
+  { preHandler: rateLimitSearch },
+  async (request, reply) => {
+    const query = request.query as { q?: string; limit?: string };
+    const q = typeof query.q === "string" ? query.q : "";
+    const rawLimit = Number(query.limit);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(rawLimit, MAX_ARTIST_SEARCH_LIMIT)
+        : DEFAULT_ARTIST_SEARCH_LIMIT;
+
+    const result = await searchArtists({ q, limit }, { prisma });
+    // { id, name } only — see lib/artistSearch.ts for why nothing else.
+    return reply.send({ items: result.items });
   },
 );
 

@@ -41,10 +41,22 @@ type TmItem = {
 
 type MergedItem = DbItem | TmItem;
 
+// Artists come from our own table only (/artists). There is no
+// Ticketmaster equivalent: a TM artist we have never ingested has no
+// Afterset page to navigate to, so offering the row would dead-end.
+type ArtistItem = {
+  id: string;
+  name: string;
+};
+
 const DAY_MS = 86_400_000;
 const MIN_QUERY_CHARS = 2;
 const DEBOUNCE_MS = 250;
 const MAX_DISPLAY = 12;
+// Artists sit ABOVE shows, so this cap is what keeps show rows above the
+// fold — particularly on a phone, where the dropdown shares the viewport
+// with the keyboard.
+const MAX_ARTISTS = 3;
 
 function dateOnly(s: string): string {
   return (s ?? "").slice(0, 10);
@@ -109,19 +121,32 @@ export default function ShowSearch({
   const router = useRouter();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<MergedItem[]>([]);
+  const [artists, setArtists] = useState<ArtistItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [promotingKey, setPromotingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Monotonic id for the in-flight search. Debouncing alone does NOT
+  // prevent a stale overwrite: once a request is away it cannot be
+  // recalled, so a slow response for "lcd" can land after a fast one for
+  // "lcd soundsystem" and replace correct results with outdated ones.
+  // Every handler below checks it still owns the latest id before
+  // touching state.
+  const requestIdRef = useRef(0);
 
   // Debounced parallel fetch + merge + dedupe + rank.
   useEffect(() => {
     const trimmed = q.trim();
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    // Claim a new id on EVERY keystroke, including the early return
+    // below — otherwise clearing the box back under the minimum length
+    // would leave an in-flight response free to repopulate it.
+    const requestId = ++requestIdRef.current;
     if (trimmed.length < MIN_QUERY_CHARS) {
       setResults([]);
+      setArtists([]);
       setLoading(false);
       setError(null);
       return;
@@ -129,16 +154,24 @@ export default function ShowSearch({
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const [dbRes, tmRes] = await Promise.all([
+        const [dbRes, tmRes, artistRes] = await Promise.all([
           fetch(
             `${API_BASE}/shows?q=${encodeURIComponent(trimmed)}&limit=20`,
           ),
           fetch(
             `${API_BASE}/shows/search?q=${encodeURIComponent(trimmed)}`,
           ),
+          fetch(
+            `${API_BASE}/artists?q=${encodeURIComponent(trimmed)}&limit=${MAX_ARTISTS}`,
+          ),
         ]);
+        // A newer keystroke has already superseded this request.
+        if (requestId !== requestIdRef.current) return;
         const dbData = dbRes.ok ? await dbRes.json() : { items: [] };
         const tmData = tmRes.ok ? await tmRes.json() : { items: [] };
+        const artistData = artistRes.ok
+          ? await artistRes.json()
+          : { items: [] };
 
         const dbItems: DbItem[] = (dbData.items ?? []).map((i: any) => ({
           source: "db",
@@ -168,19 +201,32 @@ export default function ShowSearch({
             localDate: i.localDate,
           }));
 
+        const artistItems: ArtistItem[] = (artistData.items ?? [])
+          .filter(
+            (a: any) => typeof a?.id === "string" && typeof a?.name === "string",
+          )
+          .slice(0, MAX_ARTISTS)
+          .map((a: any) => ({ id: a.id, name: a.name }));
+
         const dbKeys = new Set(dbItems.map(dedupeKey));
         const filteredTm = tmItems.filter((t) => !dbKeys.has(dedupeKey(t)));
         const merged = rankAndSort([...dbItems, ...filteredTm]).slice(
           0,
           MAX_DISPLAY,
         );
+        // Re-checked after the awaits above: json() is itself async, so
+        // a newer request can land between the fetch and this point.
+        if (requestId !== requestIdRef.current) return;
         setResults(merged);
+        setArtists(artistItems);
         setError(null);
       } catch {
+        if (requestId !== requestIdRef.current) return;
         setError("Could not search.");
         setResults([]);
+        setArtists([]);
       } finally {
-        setLoading(false);
+        if (requestId === requestIdRef.current) setLoading(false);
       }
     }, DEBOUNCE_MS);
   }, [q]);
@@ -207,6 +253,15 @@ export default function ShowSearch({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+
+  function onArtistClick(a: ArtistItem) {
+    // Straight navigation. Unlike a Ticketmaster show row there is
+    // nothing to promote first — every artist returned by /artists is
+    // already canonical and already has an in-market show, which is why
+    // the endpoint excludes artists that do not.
+    router.push(`/artist/${a.id}`);
+    setOpen(false);
+  }
 
   async function onItemClick(item: MergedItem) {
     if (item.source === "db") {
@@ -284,7 +339,7 @@ export default function ShowSearch({
       </span>
       <input
         type="search"
-        aria-label="Search artists, shows, venues"
+        aria-label="Search artists and shows"
         className="input"
         value={q}
         onChange={(e) => {
@@ -292,7 +347,7 @@ export default function ShowSearch({
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
-        placeholder="Search artists, shows, venues"
+        placeholder="Search artists and shows"
         autoComplete="off"
         spellCheck={false}
         style={
@@ -314,7 +369,7 @@ export default function ShowSearch({
             padding: 6,
           }}
         >
-          {loading && results.length === 0 && (
+          {loading && results.length === 0 && artists.length === 0 && (
             <div
               style={{ padding: "14px 12px", color: "var(--muted)", fontSize: "14px" }}
             >
@@ -322,9 +377,9 @@ export default function ShowSearch({
             </div>
           )}
 
-          {!loading && results.length === 0 && (
+          {!loading && results.length === 0 && artists.length === 0 && (
             <div style={{ padding: "14px 12px", fontSize: "14.5px" }}>
-              No shows matching &ldquo;{q.trim()}&rdquo; yet.
+              Nothing matching &ldquo;{q.trim()}&rdquo; yet.
               <div
                 style={{
                   marginTop: 6,
@@ -339,6 +394,63 @@ export default function ShowSearch({
                 to add it.
               </div>
             </div>
+          )}
+
+          {/* Artists first, capped at MAX_ARTISTS. They are navigational —
+              you already know who you want — whereas show rows are the
+              action. Section labels only appear when artists are present,
+              so with no artist match the list looks exactly as it did
+              before this feature. Labels are plain divs, so they are not
+              focusable and Tab still moves artist → show in visual order. */}
+          {artists.length > 0 && (
+            <>
+              <div
+                role="presentation"
+                style={{
+                  padding: "8px 12px 4px",
+                  color: "var(--muted)",
+                  fontSize: "11.5px",
+                  fontWeight: 600,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Artists
+              </div>
+              {artists.map((a) => (
+                <button
+                  key={`artist_${a.id}`}
+                  onClick={() => onArtistClick(a)}
+                  className="menu-item"
+                  style={{ cursor: "pointer" }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "15px",
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    {a.name}
+                  </div>
+                </button>
+              ))}
+              {results.length > 0 && (
+                <div
+                  role="presentation"
+                  style={{
+                    padding: "10px 12px 4px",
+                    color: "var(--muted)",
+                    fontSize: "11.5px",
+                    fontWeight: 600,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Shows
+                </div>
+              )}
+            </>
           )}
 
           {results.map((item) => {
