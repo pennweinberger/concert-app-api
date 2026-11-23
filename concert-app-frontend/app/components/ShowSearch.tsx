@@ -422,7 +422,16 @@ export default function ShowSearch({
                   key={`artist_${a.id}`}
                   onClick={() => onArtistClick(a)}
                   className="menu-item"
-                  style={{ cursor: "pointer" }}
+                  // An artist row is a single line, so .menu-item's 10px
+                  // padding leaves it at 43px — one pixel under the 44px
+                  // minimum touch target. Show rows are two lines and
+                  // clear it comfortably; these need the floor stated.
+                  style={{
+                    cursor: "pointer",
+                    minHeight: 44,
+                    display: "flex",
+                    alignItems: "center",
+                  }}
                 >
                   <div
                     style={{
